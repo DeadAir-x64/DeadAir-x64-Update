@@ -254,6 +254,45 @@ foreach ($sub in @('logs', 'savedgames', 'shaders_cache_oxr')) {
     New-Item -ItemType Directory -Force (Join-Path $Root "appdata\$sub") | Out-Null
 }
 
+# --- 10a. Летний архив ----------------------------------------------------------------------
+# Лето в Dead Air — это архив xtra_green.xdb0. В оригинальной установке он лежит НЕ в database,
+# а в отдельной папке «Летняя растительность (опционально)»: автор оставил его на усмотрение
+# игрока, и переносить его надо было руками.
+#
+# В x64 сезон переключается прямо в настройках игры, и переключатель смотрит только на database.
+# Значит у того, кто архив не переносил, выбор «лето» не делал ровно ничего — и молча: меню
+# соглашалось, а трава оставалась осенней. Именно на это и пожаловались с закрытого теста.
+#
+# Поэтому переносим архив сами. Само по себе его присутствие сезон не меняет: подключать его или
+# нет решает признак в da_season.txt. Признак пишем осенним — то есть внешне не меняется ничего,
+# но переключатель в меню начинает работать.
+#
+# Ищем по имени файла, а не по имени папки: у разных раздач она называется по-разному.
+$seasonArchive = Join-Path $Root 'database\xtra_green.xdb0'
+$seasonMarker = Join-Path $Root 'database\da_season.txt'
+
+if (-not (Test-Path $seasonArchive)) {
+    $databaseDir = Join-Path $Root 'database'
+    $spare = Get-ChildItem $Root -Recurse -Filter 'xtra_green.xdb0' -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.DirectoryName -ne $databaseDir } | Select-Object -First 1
+
+    if ($spare) {
+        Say '  Переношу летний архив в database — без него сезон в настройках не работает...'
+        try {
+            Move-Item $spare.FullName $seasonArchive -Force
+            if (-not (Test-Path $seasonMarker)) {
+                # ASCII и без -NoNewline: тот появился только в PowerShell 5.0, а нам нужен и 3.0.
+                [System.IO.File]::WriteAllText(
+                    $seasonMarker, 'autumn', (New-Object System.Text.ASCIIEncoding))
+            }
+            Say '  Сезон теперь переключается в настройках игры (применяется после перезапуска).' 'DarkGray'
+        } catch {
+            Say "  ! не удалось перенести летний архив: $($_.Exception.Message)" 'DarkYellow'
+            Say '    Перенесите xtra_green.xdb0 в папку database вручную.' 'DarkYellow'
+        }
+    }
+}
+
 $launcher = Join-Path $Root 'Dead Air x64.cmd'
 @"
 @echo off
