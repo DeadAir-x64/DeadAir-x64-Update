@@ -1,0 +1,5 @@
+# сюда попадать не должно
+appdata/
+original_x32_backup/
+*.log
+_dist/

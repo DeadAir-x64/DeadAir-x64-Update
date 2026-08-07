@@ -1,0 +1,42 @@
+#include "m_flesh.ltx"
+#include "m_bloodsucker.ltx"
+#include "m_dog.ltx"
+#include "m_boar.ltx"
+#include "m_pseudodog.ltx"
+#include "m_giant.ltx"
+#include "m_controller.ltx"
+#include "m_poltergeist.ltx"
+#include "m_snork.ltx"
+#include "m_crow.ltx"
+#include "m_tushkano.ltx"
+#include "m_phantom.ltx"
+#include "m_chimera.ltx"
+#include "m_burer.ltx"
+#include "m_zombie.ltx"
+#include "m_fracture.ltx"
+#include "m_cat.ltx"
+#include "m_rat.ltx"
+#include "m_borya.ltx"
+
+[monsters_common]
+	; [DA_PORT] 12 игровых часов вместо 65535, то есть вместо "никогда".
+;
+; Уборка тел безопасна по построению, и это видно в CSE_ALifeMonsterAbstract::redundant():
+; удаляется только труп, который УЖЕ ОФЛАЙН (то есть дальше switch_distance = 250 м от игрока),
+; не сюжетный (story_id не задан) и пролежал заданное время по ИГРОВЫМ часам. У офлайн-объекта
+; нет клиентского представления, а значит нет и биндера, который мог бы пережить удаление и
+; обратиться к освобождённой памяти. Само удаление уходит в отложенную очередь
+; (CALifeSwitchManager::switch_object), поэтому не рушит обход реестра, из которого вызвано.
+;
+; Почему 12: при time_factor = 10 это около 1.2 часа реального времени. Тело успевает дождаться
+; игрока, вернувшегося за лутом, но не копится вечно. Значение задано в игровых часах, поэтому
+; ускорение времени его не ломает.
+;
+; ВАЖНО: оба параметра держать одинаковыми. Движок читает stay_after_death_time_interval, а
+; corpse_remove_game_time_interval оставлен для совместимости со скриптами мода. Разойдутся -
+; и один будет обещать одно, а работать будет другое.
+	corpse_remove_game_time_interval	= 12 ; in hours
+		stay_after_death_time_interval		= 12 ; in hours
+
+    script_move_min_offset_from_leader	=	3
+	script_move_max_offset_from_leader	=	8

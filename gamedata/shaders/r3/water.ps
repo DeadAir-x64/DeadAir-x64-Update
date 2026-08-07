@@ -1,0 +1,271 @@
+#include "common.h"
+#include "ogse_reflections.h"
+
+struct   vf
+{
+	float2	tbase	: TEXCOORD0;	// base
+	float4	tnorm0	: TEXCOORD1;	// nm0
+	float4	position_w	: TEXCOORD2;	// nm1
+	float3	M1		: TEXCOORD3;
+	float3	M2		: TEXCOORD4;
+	float3	M3		: TEXCOORD5;
+	float3	v2point	: TEXCOORD6;
+//#ifdef	USE_SOFT_WATER
+//#ifdef	NEED_SOFT_WATER
+	float4	tctexgen: TEXCOORD7;
+//#endif	//	USE_SOFT_WATER
+//#endif	//	NEED_SOFT_WATER	
+	float4	c0		: COLOR0;
+	float	fog		: FOG;
+	float4	hpos	: SV_Position;
+};
+
+Texture2D	s_nmap;
+Texture2D	s_leaves;
+Texture2D	jitter0;
+
+uniform float4		various;
+
+#if defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
+float3	water_intensity;
+#endif	//	defined(USE_SOFT_WATER) && defined(NEED_SOFT_WATER)
+#include "settings_da_water.h"	// [DA_PORT] все крутилки воды — там
+
+float3 calc_moon_road(float3 color, float3 vreflect, float2 tc, float depth, float Nz)
+{
+	float cut = 4;
+	float r = 0.0015*jitter0.Sample(smp_linear,tc).x;											// randomize borders of road
+	//float r = 0.0015;											// randomize borders of road
+	float f = dot(normalize(vreflect.xz), -normalize(L_sun_dir_w.xz));
+	f = step(lerp(0.998+r /*+ 0.2*ogse_c_screen.w*2.2*/, 1, depth*0.01), f);		// road appearance factor
+	f *= step(cut, depth);															// cut road in near 10 m
+	f *= saturate((depth-cut)*0.5);													// fade in road in 2 m
+	f *= step(Nz, 0);																// remove road from pixels with normals with positive z for better look
+	f *= 1 - saturate(abs(L_sun_dir_w.y*2));										// road fading out with sun height
+	f *= various.x;															// weather control
+	return lerp(color, L_sun_color*2, f);
+}
+
+
+#ifdef GBUFFER_OPTIMIZATION
+float4 main( vf I, float4 pos2d : SV_Position ) : SV_Target
+#else
+float4 main( vf I ) : SV_Target
+#endif
+{
+	float4	base= s_base.Sample( smp_base, I.tbase);
+	float3	n0	= s_nmap.Sample( smp_base, I.tnorm0.xy);
+	float3	n1	= s_nmap.Sample( smp_base, I.tnorm0.zw);
+	// [DA_PORT] Дальняя вода успокаивается: см. WATER_FAR_* в settings_da_water.h. v2point здесь ещё
+	// не нормализован — это вектор от камеры к точке в мире, его длина и есть дистанция в метрах.
+	float	da_water_dist	= length(I.v2point);
+	float	da_water_far	= saturate((da_water_dist - WATER_FAR_START) / max(WATER_FAR_END - WATER_FAR_START, 0.001h));
+	float	da_water_amp	= WATER_WAVE_AMP * lerp(1.0h, WATER_FAR_AMP, da_water_far);
+
+	float3	Navg	= (n0 + n1 - 1) * float3(da_water_amp, da_water_amp, 1.0h);
+
+	float3	Nw	= mul (float3x3(I.M1, I.M2, I.M3), Navg);
+			Nw	= normalize (Nw);
+	float3	v2point	= normalize (I.v2point);
+	
+	float2 PosTc = I.tctexgen.xy/I.tctexgen.z;
+#ifdef GBUFFER_OPTIMIZATION
+	gbuffer_data gbd = gbuffer_load_data( PosTc, pos2d );
+#else
+	gbuffer_data gbd = gbuffer_load_data( PosTc );
+#endif
+	
+	float3 N = mul(m_V, Nw);
+	float4 _P = 	float4( gbd.P, gbd.mtl );
+	float 	ms	= xmaterial;
+	
+	float3 vreflect = reflect(normalize(v2point), normalize(Nw.xyz));
+	float3 env = calc_envmap(vreflect);
+	
+	//env = Vibrance(env,0.75);
+	
+	float	fresnel	= saturate (dot(vreflect,v2point));
+	float	power	= pow(fresnel,9);
+
+	// [DA_PORT] Сор копится сюда, а накладывается ПОСЛЕ тумана — см. конец функции. Иначе водная
+	// дымка гасит его вместе с подводной картинкой, и лист читается лежащим на дне, а не плавающим.
+	float3	da_leaf_rgb	= 0.0h;
+	float	da_leaf_w	= 0.0h;
+	
+	
+#ifdef USE_REFLECTIONS
+	// [DA_PORT] Real screen-space reflections: get_reflection() now samples the scene copy (rt_SSR,
+	// bound to s_image by loose r3\effects_water.s). refl.w is the screen-edge fade -> near the screen
+	// centre the ray-marched scene colour wins, towards the borders it falls back to the sky cubemap.
+	// [DA_PORT] Дальняя вода отражает кубмапой, а не лучом — см. WATER_SSR_* в settings_da_water.h.
+	// Ветка настоящая, а не смешивание с нулевым весом: смысл в том, чтобы марш на дальних
+	// пикселях НЕ выполнялся вовсе.
+	float	da_ssr_fade	= saturate((da_water_dist - WATER_SSR_START) / max(WATER_SSR_END - WATER_SSR_START, 0.001h));
+	float3 c_reflection;
+
+	if (da_ssr_fade >= 0.999h)
+	{
+		c_reflection = env;
+	}
+	else
+	{
+		float4 refl = calc_reflections(I.position_w, vreflect);
+		c_reflection = lerp(refl.xyz, env.xyz, refl.www);
+		c_reflection = lerp(c_reflection,env,0.18);
+		c_reflection = lerp(c_reflection, env, da_ssr_fade);	// плавный переход к кубмапе
+	}	// [DA_PORT] was 0.75 (SSR diluted to 25%), now ~82% SSR
+#else
+	float3	c_reflection       = env;
+#endif
+
+	// [DA_PORT] Потолок выброса — разбор в settings_da_water.h (WATER_REFL_CLAMP).
+#ifdef WATER_REFL_CLAMP
+	{
+		float da_refl_lum = dot(c_reflection, float3(0.299h, 0.587h, 0.114h));
+		if (da_refl_lum > WATER_REFL_CLAMP)
+			c_reflection *= WATER_REFL_CLAMP / max(da_refl_lum, 0.0001h);
+	}
+#endif
+
+	c_reflection *= 0.95;	// [DA_PORT] was 0.5 — the reflection was being halved on top of everything else
+
+	// [DA_PORT] Let the surface texture fade out at grazing angles: real water turns mirror-like as the
+	// view flattens, so keeping the full base texture there was flattening the reflection.
+	float3	final              = lerp(c_reflection,base.rgb,base.a*0.6*(1.0h-0.6h*power));
+			final	*= I.c0*2;
+	
+#ifdef	NEED_SOFT_WATER
+
+	float	alpha	= 0.25h+0.25h*power;                        // 1=full env, 0=no env
+
+#ifdef	USE_SOFT_WATER
+	//	Igor: additional depth test
+	float waterDepth = _P.z-I.tctexgen.z;
+	
+	//	water fog
+	// [DA_PORT] transparency: this fog is what makes the surface go milky with depth. -4.0 saturates
+	// after ~0.5 m, hiding the bottom; -2.5 went white before the depth colour had a chance to show, so
+	// the middle distance read as haze rather than as water. -1.3 keeps the bed visible several metres
+	// out and lets the tint, not the fog, be what darkens the deep parts.
+	// Tuning: more negative = murkier, closer to 0 = clearer.
+	float  fog_exp_intens = -1.3h;
+	float fog	= 1-exp(fog_exp_intens*waterDepth);
+
+	// [DA_PORT] Coloured absorption instead of the flat grey. saturate() on the depth term because
+	// waterDepth goes negative on geometry poking through the surface.
+	float  depth_mix = 1.0h - exp(-saturate(waterDepth) * WATER_TINT_FALLOFF * 4.0h);
+	float3 Fc  	= lerp(WATER_TINT_SHALLOW, WATER_TINT_DEEP, depth_mix) * water_intensity.r;
+	// [DA_PORT] Reflection visibility used to ride on `alpha` (0.25..0.5), so looking down at the water
+	// left 75% flat deep-water grey and the reflection barely registered — and dropping alpha for
+	// transparency made it worse. Give the surface colour its own weight so transparency and
+	// reflection strength are independent knobs.
+	// Tuning: raise for a more mirror-like surface, lower for murky/flat.
+	// Clear water is a weak mirror seen from above and a strong one seen edge-on — that IS the Fresnel
+	// curve. Leaning harder on the angle is what buys transparency without giving up the reflections:
+	// look down and you see the bed, look along the surface and it still mirrors the far bank.
+	float	refl_amount = saturate(0.28h + 0.72h*power);
+	final 		= lerp (Fc, final, refl_amount);
+
+	alpha 		= min(alpha, saturate(waterDepth));
+
+	alpha 		= max (fog, alpha);
+
+	alpha 		*= 0.80h;	// [DA_PORT] slightly more see-through overall
+
+	
+#ifdef USE_REFLECTIONS
+	final = calc_moon_road(final, vreflect, I.tbase.xy, _P.z, Nw.z);
+#endif
+
+	// [DA_PORT] Sun glint. L_sun_dir_w points the way the light travels, so the direction TO the sun is
+	// its negation; v2point runs from the eye to the surface, so the eye vector is likewise negated.
+	// Weighted by the same grazing-angle term as the reflection — water only glints when seen flat.
+	{
+		float3 sun_h = normalize(-v2point - L_sun_dir_w);
+		float  glint = pow(saturate(dot(Nw, sun_h)), WATER_SUN_POWER);
+		final += L_sun_color * (glint * WATER_SUN_STRENGTH * saturate(0.25h + power));
+	}
+
+	// [DA_PORT] Shoreline foam. The band is driven by the same depth difference the water fog uses, and
+	// broken up by the two scrolling normal maps that are already sampled above — they give an animated
+	// pattern for free, which is what keeps the foam from looking like a painted-on outline.
+	{
+		float  foam_band = 1.0h - saturate(waterDepth / WATER_FOAM_WIDTH);
+			   foam_band = foam_band * foam_band;			// keep it hugging the shore
+		float  foam_noise = saturate((n0.x + n1.y) * 0.9h);
+		float  foam = saturate(foam_band * foam_noise * WATER_FOAM_STRENGTH);
+			   foam *= saturate(waterDepth * 12.0h);		// no foam where the surface is not wet yet
+		final  = lerp(final, WATER_FOAM_COLOR * water_intensity.r, foam);
+		alpha  = max(alpha, foam);
+	}
+
+	// [DA_PORT] Плавающий сор: листья и веточки на поверхности. Слой был в шейдере с самого начала, но
+	// стоял ДО пены — а пена у нас процедурная и рисуется здесь, то есть закрашивала его. Теперь сор
+	// ложится последним, поверх всего: он и в жизни плавает на поверхности, а не под пеной.
+	//
+	// Окно глубины расширено. Было `smoothstep(0.025,0.05) * smoothstep(0.1,0.075)` — полоса в
+	// 2.5..10 см, то есть сор виден только на самом урезе воды и с берега почти не читается. Стало
+	// 2..60 см: на болоте и в лужах у берега он покрывает то, что и должен.
+	{
+		float	calc_cos = -dot(float3(I.M1.z, I.M2.z, I.M3.z),  normalize(v2point));
+		// [DA_PORT] Глубина БЕЗ множителя на косинус взгляда.
+		//
+		// Было `waterDepth * calc_cos`, то есть глубина ВДОЛЬ ЛУЧА. Вдали взгляд идёт вскользь, косинус
+		// стремится к нулю, и вместе с ним обнулялась «глубина» — сор пропадал ровно там, где воды
+		// больше всего видно. А окно должно спрашивать «мелко ли ЗДЕСЬ», и это свойство места, а не
+		// того, откуда на него смотрят.
+		float	calc_depth = saturate(waterDepth);
+
+		// Тина: чем глубже, тем гуще. Ложится первой — сор потом ляжет поверх неё.
+		float2	debris_uv = I.position_w.xz * WATER_DEBRIS_SCALE;
+		float4	silt	= s_leaves.Sample( smp_base, debris_uv * WATER_SILT_TILE);
+		float	fSilt	= smoothstep(0.0h, WATER_SILT_DEPTH, calc_depth) * WATER_SILT_STRENGTH;
+		final	= lerp(final, WATER_SILT_COLOR * water_intensity.r, saturate(silt.a) * fSilt);
+
+		// ---- РЯСКА -----------------------------------------------------------------------------
+		// Плавает НА поверхности, поэтому копится и накладывается за туманом (как раньше сор).
+		// Листвы здесь больше нет: она читалась мусором в воде, а нужен зелёный ковёр.
+		//
+		// Зерно берём из той же текстуры на высокой частоте — от неё нужна только альфа, цвет свой.
+		// Две повёрнутые выборки с несоизмеримым масштабом убирают решётку, крупная маска собирает
+		// ряску в пятна: она и в жизни сбивается ветром к берегу и в затишья, а не лежит ровно.
+		float2	rdrift	= float2(timers.x * WATER_RYASKA_DRIFT,
+								 timers.x * WATER_RYASKA_DRIFT * 0.6h + sin(timers.x * 0.11h) * WATER_RYASKA_SWAY);
+		float2	ruv		= (debris_uv + rdrift) * WATER_RYASKA_SCALE;
+		float2	ruv2	= mul(float2x2(0.80h, -0.60h, 0.60h, 0.80h), ruv) * WATER_DEBRIS_ROT2 + 0.37h;
+		float	g1		= s_leaves.Sample( smp_base, ruv).a;
+		float	g2		= s_leaves.Sample( smp_base, ruv2).a;
+		float	grain	= max(g1, g2);
+
+		float	patch	= s_leaves.Sample( smp_base, (debris_uv + rdrift) * WATER_RYASKA_PATCH).a;
+				patch	= saturate((patch - (1.0h - WATER_RYASKA_COVER)) * 2.5h);
+
+		float	fRyaska	= smoothstep(WATER_RYASKA_NEAR, WATER_RYASKA_NEAR * 3.0h, calc_depth);
+				fRyaska *= smoothstep(WATER_RYASKA_FAR, WATER_RYASKA_FAR * 0.6h, calc_depth);
+
+		float	ry		= saturate((grain - WATER_RYASKA_CUT) * WATER_RYASKA_SHARP) * patch * fRyaska;
+		da_leaf_rgb	= WATER_RYASKA_COLOR * water_intensity.r;
+		da_leaf_w	= saturate(ry * WATER_RYASKA_STRENGTH);
+	}
+
+#endif	//	USE_SOFT_WATER
+
+	//	Fogging
+	final 		= lerp(fog_color, final, I.fog);
+	alpha		*= I.fog*I.fog;
+
+	// [DA_PORT] Сор — последним, уже за туманом: он лежит НА поверхности, толща воды его не мутит.
+	final		= lerp(final, da_leaf_rgb, da_leaf_w);
+	alpha		= max(alpha, da_leaf_w);
+
+	clip(alpha - WATER_ALPHA_CLIP);	// при нулевом пороге ничего не отбрасывает
+	return  float4   (final, alpha )                ;
+
+#else	//	NEED_SOFT_WATER
+
+	final 		= lerp(fog_color, final, I.fog);
+	clip(I.fog * I.fog - WATER_ALPHA_CLIP);
+	return  float4   (final, I.fog*I.fog )      ;
+
+#endif	//	NEED_SOFT_WATER
+}

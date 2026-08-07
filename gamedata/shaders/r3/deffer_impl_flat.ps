@@ -1,0 +1,189 @@
+#include "common.h"
+#include "da_shader_ids.h"
+#include "sload.h"
+#include "da_puddles.h"	// [DA_PORT] лужи в дождь
+
+#define	USE_4_DETAIL
+
+#if defined(USE_TDETAIL) && defined(USE_4_DETAIL)
+#	define	USE_4_BUMP
+#endif
+
+#ifdef USE_4_BUMP
+f_deffer 	main	( p_bumped I 	)
+#else
+f_deffer 	main	( p_flat I 		)
+#endif
+{
+	f_deffer	O;
+
+ 	// diffuse
+	float4 D		= tbase		(I.tcdh);			// IN:  rgb.a
+//	float4 L 	= tex2D		(s_lmap, I.tcdh);
+	float4 L 	= s_lmap.Sample( smp_base, I.tcdh);
+
+	float	G	= def_gloss	;
+
+# ifdef	USE_TDETAIL
+ # ifdef USE_4_DETAIL
+//	float4	mask= tex2D		(s_mask, I.tcdh);
+	float4	mask= s_mask.Sample ( smp_base, I.tcdh);
+	float 	mag	= dot 		(mask,1);
+			mask= mask/mag	;
+
+//	float3	d_R	= tex2D		(s_dt_r, I.tcdbump)*mask.r;
+//	float3	d_G	= tex2D		(s_dt_g, I.tcdbump)*mask.g;
+//	float3	d_B	= tex2D		(s_dt_b, I.tcdbump)*mask.b;
+//	float3	d_A	= tex2D		(s_dt_a, I.tcdbump)*mask.a;
+	float3	d_R	= s_dt_r.Sample ( smp_base, I.tcdbump)*mask.r;
+	float3	d_G	= s_dt_g.Sample ( smp_base, I.tcdbump)*mask.g;
+	float3	d_B	= s_dt_b.Sample ( smp_base, I.tcdbump)*mask.b;
+	float3	d_A	= s_dt_a.Sample ( smp_base, I.tcdbump)*mask.a;
+	float3	dt	= d_R+d_G+d_B+d_A;
+		D.rgb	= 2*D.rgb*dt	 ;
+
+  # ifdef USE_4_BUMP
+
+// 	 float4	n_Rt = tex2D	(s_dn_r, I.tcdbump).wzyx;
+//	 float4	n_Gt = tex2D	(s_dn_g, I.tcdbump).wzyx;
+//	 float4	n_Bt = tex2D	(s_dn_b, I.tcdbump).wzyx;
+//	 float4	n_At = tex2D	(s_dn_a, I.tcdbump).wzyx;
+ 	 float4	n_Rt = s_dn_r.Sample ( smp_linear, I.tcdbump).wzyx;
+	 float4	n_Gt = s_dn_g.Sample ( smp_linear, I.tcdbump).wzyx;
+	 float4	n_Bt = s_dn_b.Sample ( smp_linear, I.tcdbump).wzyx;
+	 float4	n_At = s_dn_a.Sample ( smp_linear, I.tcdbump).wzyx;
+	 
+ 	 float3	n_R = (n_Rt-0.5)*mask.r; float g_R=n_Rt.w*mask.r;
+	 float3	n_G = (n_Gt-0.5)*mask.g; float g_G=n_Gt.w*mask.g;
+	 float3	n_B = (n_Bt-0.5)*mask.b; float g_B=n_Bt.w*mask.b;
+	 float3	n_A = (n_At-0.5)*mask.a; float g_A=n_At.w*mask.a;
+
+	 float3	mix		= 	n_R+n_G+n_B+n_A;
+			mix.z	*=	0.5;		//. make bump twice as contrast (fake, remove me if possible)
+	 float3	N		= 	mul     	(float3x3(I.M1, I.M2, I.M3), mix.xyz);
+
+	 	 	G 		= 	g_R+g_G+g_B+g_A;
+//			G 	= 0			;
+//			G 	= mix.w		;		// gloss
+  # else
+	float3	N 	= I.N.xyz	;
+  # endif
+
+ # else
+//	D.rgb	= 2*D.rgb*tex2D	(s_detail, I.tcdbump).rgb;
+	D.rgb	= 2*D.rgb*s_detail.Sample( smp_base, I.tcdbump).rgb;
+ # endif
+# else
+	float3	N 	= I.N.xyz	;
+# endif
+
+	// [DA_PORT] Лужи и мокрая земля. Стоит здесь, а не раньше: к этому месту собраны и нормаль после
+	// детальных карт, и глянец, и цвет — то есть ровно те три величины, которые вода и меняет.
+	//
+	// ⚠️ Функция считает ТОЛЬКО маску и нормаль. Цвет и глянец меняются здесь же, обычными строками в
+	// том же теле шейдера, — и это не стилистика.
+	//
+	// История: сначала цвет отдавался через `inout`, потом через поле возвращаемой структуры, и оба
+	// раза он НЕ доезжал до кадра. Проба с абсолютным чёрным цветом внутри функции подтвердила это
+	// однозначно: маска живая, константы живые, нормаль применяется — а цвет нет. В кадре оставался
+	// один контур лужи, «разметка». Что именно теряется по дороге, я так и не назвал; вместо ещё
+	// одной догадки убрана сама возможность потери — маска это одно число, и применяется оно там же,
+	// где живёт D.
+	// [DA_PORT] Лужи в G-буфере: нормаль, глянец, цвет. Возврат к варианту, утверждённому в игре.
+	//
+	// Наложение после освещения (da_puddle_refl.ps) даёт математически чистую границу, но вода в нём
+	// теряет объём: плоская нормаль в G-буфере — это то, что заставляет отложенное освещение считать
+	// поверхность ровной, и никакое наложение поверх готового кадра этого не заменяет. Проверено
+	// обеими версиями подряд; выбран этот, с ценой в виде тонкой каймы по краю.
+	//
+	// Наложение осталось, но занимается только отражением мира — тем, чего G-буфер сделать не может.
+	// Признак «сюда попадает дождь». Где уровень скомпилирован со статическим солнцем, берём ДОСТУП
+	// СОЛНЦА из лайтмапы (L.w): под крышей он ноль по построению. Где его нет — остаётся альфа базовой
+	// текстуры, как раньше. Именно на ней лужи и заводились в помещениях: она к небу отношения не имеет.
+#ifdef USE_R2_STATIC_SUN
+	const float da_sky_src = L.w;
+#else
+	const float da_sky_src = D.w;
+#endif
+	da_puddle_result P = da_puddles(I.position.xyz, da_sky_src, N);
+	D.w = P.hemi;
+
+	// [DA_PORT] Выключатель G-буферной половины луж (r__puddles_gbuf).
+	//
+	// Обводка родится ЗДЕСЬ и только здесь: у края маски встречаются бугристая земля и плоская вода,
+	// и как их ни переключай — резко или плавно — на стыке остаётся шов. Со швом боролись пять
+	// заходов в лоб и не победили; тёмную кайму завели, чтобы он в ней тонул, но при выключенном
+	// потемнении воды кайма сама стала самой заметной линией в кадре.
+	//
+	// Проход наложения (da_puddle_refl.ps) свободен от этого по построению: он смешивается с кадром
+	// ПО АЛЬФЕ, а альфа границ не подчёркивает. У него своя нормаль воды, своя рябь и свой солнечный
+	// блик — то есть он самодостаточен. Цена отказа от G-буфера записана там же: плоская нормаль
+	// давала объём и отклик на лампы и костры, чего наложение поверх кадра не даёт.
+	//
+	// Ручка нужна, чтобы сравнить оба вида в игре, а не рассуждать о них.
+	[branch] if (da_puddle_look2.w > 0.5f)
+	{
+		N = P.N;
+
+		[branch] if (P.dbg_paint)
+		{
+			D.rgb = P.dbg_color;
+			G = 0.0f;
+		}
+		else
+		{
+			// Общая мокрота: шире луж и слабее их.
+			D.rgb *= lerp(1.0f, 0.88f, P.damp);
+			G = max(G, P.damp * da_puddle_look.z);
+
+			// Тёмная кайма промокшего грунта вокруг воды.
+			D.rgb *= lerp(1.0f, saturate(da_puddle_look2.z), P.rim);
+
+			// Сама вода: темнее и глянцевее. max(), а не замена — вода не может быть матовее того, на
+			// чём стоит.
+			D.rgb *= lerp(1.0f, saturate(da_puddle_look.y), P.mask);
+			// [DA_PORT] Глянец — по МЯГКОЙ маске, а не по ступени.
+			//
+			// Ступенью переключается только нормаль: усреднённая между бугристой землёй и плоской водой
+			// она не смотрит никуда и даёт тёмный шов. У глянца этой беды нет — он скаляр, промежуточное
+			// значение у него осмысленно.
+			//
+			// А ступенью он давал СВОЮ линию, и видно её было там, где сильный свет: у костра с одной
+			// стороны пикселя полный блик, с другой ноль. В пасмурной тени это незаметно, поэтому artefact
+			// долго списывался то на кайму, то на отражения.
+			G = lerp(G, max(G, saturate(da_puddle_look.x)), P.mask);
+		}
+	}
+	else
+	{
+		// Мокрота остаётся: она шире луж, считается без порога по шуму и краёв не даёт.
+		D.rgb *= lerp(1.0f, 0.88f, P.damp);
+		G = max(G, P.damp * da_puddle_look.z);
+	}
+
+	// hemi, sun, material
+	float 	ms	= xmaterial	;
+# ifdef USE_R2_STATIC_SUN
+		 	ms 	= L.w		;
+# endif
+
+  // 2. Standart output
+  float4     Ne = float4	(normalize(N), 									D.w*H_TERR			);
+  O				= pack_gbuffer( 
+								Ne,	// hemi
+								float4 	(I.position.xyz + Ne.xyz*def_virtualh/2.h, 	ms			),	//
+								sat(float4(D.x,D.y,D.z,G*0.4),0.8));	// OUT: rgb.gloss
+
+  	// [DA_PORT] Motion vector / debug stamp.
+#ifdef DA_VELOCITY
+#ifdef DA_DEBUG_SHADER_IDS
+	O.velocity = DA_ID_IMPL;
+#else
+	O.velocity = I.hpos_curr.xy / I.hpos_curr.w - I.hpos_old.xy / I.hpos_old.w;
+	// [DA_PORT] Moving pixels distrust their history - see da_motion_reactive.
+	O.reactive = max( O.reactive, da_motion_reactive(O.velocity) );
+#endif
+#endif
+
+return O;
+}

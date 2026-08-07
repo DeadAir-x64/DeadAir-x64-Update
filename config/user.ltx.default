@@ -1,0 +1,615 @@
+_preset Extreme
+ai_aim_max_angle 25.
+ai_aim_min_angle 20.
+ai_aim_min_speed 2.5
+ai_aim_predict_time 0.28
+ai_aim_use_smooth_aim 1
+ai_dead_vision_ms 1000
+ai_die_in_anomaly 0
+ai_obstacles_avoiding on
+ai_obstacles_avoiding_static off
+ai_smart_factor 1.
+ai_unstick 1
+ai_unstick_range 5.
+ai_use_old_vision 0
+ai_use_smart_covers on
+ai_use_smart_covers_animation_slots off
+ai_use_torch_dynamic_lights on
+default_controls
+bind left kLEFT
+bind right kRIGHT
+bind up kUP
+bind down kDOWN
+bind forward kW
+bind back kS
+bind lstrafe kA
+bind rstrafe kD
+bind llookout kQ
+bind rlookout kE
+bind jump kSPACE
+bind crouch kLCONTROL
+bind accel kLSHIFT
+bind sprint_toggle kX
+bind torch kL
+bind night_vision kN
+bind show_detector kO
+bind wpn_1 k4
+bind wpn_2 k1
+bind wpn_3 k2
+bind wpn_4 kT
+bind wpn_5 k3
+bind wpn_6 kB
+bind wpn_7 kG
+bind wpn_next kY
+bind wpn_fire mouse1
+bind wpn_zoom mouse2
+bind wpn_reload kR
+bind wpn_func kV
+bind wpn_firemode_next k0
+bind pause kPAUSE
+bind use kF
+bind scores kTAB
+bind screenshot kF12
+bind enter kRETURN
+bind quit kESCAPE
+bind console kGRAVE
+bind inventory kI
+bind active_jobs kP
+bind map kM
+bind contacts kH
+bind quick_use_1 kF1
+bind quick_use_2 kF2
+bind quick_use_3 kF3
+bind quick_use_4 kF4
+bind quick_save kF5
+bind quick_load kF9
+bind editor kF10
+bind ui_move_left kA
+bind ui_move_right kD
+bind ui_move_up kW
+bind ui_move_down kS
+bind ui_accept kRETURN
+bind ui_back kESCAPE
+bind ui_tab_prev kQ
+bind ui_tab_next kE
+bind ui_button_1 k1
+bind ui_button_2 k2
+bind ui_button_3 k3
+bind ui_button_4 k4
+bind ui_button_5 k5
+bind ui_button_6 k6
+bind ui_button_7 k7
+bind ui_button_8 k8
+bind ui_button_9 k9
+bind ui_button_0 k0
+bind pda_map_zoom_in kZ
+bind pda_map_zoom_out kC
+bind pda_map_zoom_reset kX
+bind pda_map_show_actor kR
+bind pda_map_show_legend kV
+bind pda_filter_toggle kB
+bind talk_switch_to_trade kX
+bind talk_log_scroll_up kQ
+bind talk_log_scroll_down kE
+bind_gpad look_around gpAXIS_RIGHT
+bind_gpad move_around gpAXIS_LEFT
+bind_gpad jump gpA
+bind_gpad crouch_toggle gpB
+bind_gpad torch gpRIGHT_STICK
+bind_gpad wpn_fire gpAXIS_TRIGGER_RIGHT
+bind_gpad wpn_zoom gpAXIS_TRIGGER_LEFT
+bind_gpad wpn_reload gpX
+bind_gpad use gpY
+bind_gpad scores gpLEFT_STICK
+bind_gpad enter gpSTART
+bind_gpad quit gpBACK
+bind_gpad inventory gpRIGHT_SHOULDER
+bind_gpad active_jobs gpLEFT_SHOULDER
+bind_gpad quick_use_1 gpDPAD_UP
+bind_gpad quick_use_2 gpDPAD_LEFT
+bind_gpad quick_use_3 gpDPAD_RIGHT
+bind_gpad quick_use_4 gpDPAD_DOWN
+bind_gpad ui_move gpAXIS_RIGHT
+bind_gpad ui_move_left gpDPAD_LEFT
+bind_gpad ui_move_right gpDPAD_RIGHT
+bind_gpad ui_move_up gpDPAD_UP
+bind_gpad ui_move_down gpDPAD_DOWN
+bind_gpad ui_move_secondary gpAXIS_LEFT
+bind_gpad ui_click_1 gpAXIS_TRIGGER_RIGHT
+bind_gpad ui_click_2 gpAXIS_TRIGGER_LEFT
+bind_gpad ui_accept gpA
+bind_gpad ui_back gpB
+bind_gpad ui_action_1 gpX
+bind_gpad ui_action_2 gpY
+bind_gpad ui_tab_prev gpLEFT_SHOULDER
+bind_gpad ui_tab_next gpRIGHT_SHOULDER
+bind_gpad pda_map_move gpAXIS_RIGHT
+bind_gpad pda_map_zoom_in gpAXIS_TRIGGER_RIGHT
+bind_gpad pda_map_zoom_out gpAXIS_TRIGGER_LEFT
+bind_gpad pda_map_show_actor gpRIGHT_STICK
+bind_gpad pda_filter_toggle gpY
+bind_gpad talk_switch_to_trade gpX
+bind_gpad talk_log_scroll gpAXIS_LEFT
+bind_sec use kF10
+bind_sec screenshot kPRINTSCREEN
+bind_sec enter kNUMPADENTER
+bind_sec ui_move_left kLEFT
+bind_sec ui_move_right kRIGHT
+bind_sec ui_move_up kUP
+bind_sec ui_move_down kDOWN
+bind_sec ui_accept kF
+bind_sec ui_back kG
+bind_sec ui_action_1 kY
+bind_sec ui_action_2 kN
+bind_sec pda_map_move_left kLEFT
+bind_sec pda_map_move_right kRIGHT
+bind_sec pda_map_move_up kUP
+bind_sec pda_map_move_down kDOWN
+bind_sec pda_map_zoom_in kADD
+bind_sec pda_map_zoom_out kSUBTRACT
+bind_sec pda_map_zoom_reset kNUMPAD0
+bind_sec pda_map_show_actor kNUMPADCOMMA
+bind_sec pda_map_show_legend kMULTIPLY
+bind_sec talk_log_scroll_up kPGUP
+bind_sec talk_log_scroll_down kPGDN
+cam_inert 0.
+cam_slide_inert 0.25
+cl_cod_pickup_mode 1
+cl_dynamiccrosshair on
+cl_mpdemosave 0
+con_sensitive 0.15
+da_fp_body 1
+da_legs_cam 1
+da_legs_fwd -0.3
+da_legs_hide 0
+da_legs_pitch_fwd -0.1
+da_legs_pitch_y -0.05
+da_legs_y 0.
+da_memory_dump 0
+da_smap_cache st_opt_smap_cache_low
+disable_lens_flare 0
+draw_downloads 0
+fov 90.
+g_always_use_attitude_sensors off
+g_autopickup on
+g_backrun on
+g_corpsenum 10
+g_crouch_toggle off
+g_cursor_intensity_max 15.
+g_cursor_intensity_min 5.
+g_cursor_intensity_step 0.5
+g_dynamic_music off
+g_eventdelay 0
+g_first_person_death 0
+g_game_difficulty gd_master
+g_important_save on
+g_inv_highlight_equipped 0
+g_language rus
+g_language_ltx rus
+g_loading_stages off
+g_look_intensity_max 60.
+g_look_intensity_min 15.
+g_look_intensity_step 0.7
+g_multi_item_pickup on
+g_normalize_mouse_sens 0
+g_normalize_upgrade_mouse_sens 0
+g_sleep_time 5
+g_unload_ammo_after_pick_up 0
+g_use_tracers off
+g_weapon_dof 0
+g_weapon_malfunctions 1
+gamepad_cursor_autohide_time 1.5
+gamepad_invert_x off
+gamepad_invert_y off
+gamepad_sensor_deadzone 0.005
+gamepad_sensor_sens 0.5
+gamepad_sensors_enable on
+gamepad_stick_inner_deadzone 0.15
+gamepad_stick_outer_deadzone 0.96
+gamepad_stick_sens_x 0.12
+gamepad_stick_sens_y 0.7
+hud_crosshair on
+hud_crosshair_dist off
+hud_draw on
+hud_draw_info on
+hud_draw_map off
+hud_fov 0.35
+hud_info on
+hud_left_handed off
+hud_nearwall 0
+hud_nearwall_dist_max 1.
+hud_nearwall_dist_min 0.05
+hud_nearwall_speed 8.
+hud_nearwall_target_fov 0.35
+hud_weapon on
+keypress_on_start 0
+load_last_save cap3347 - autosave
+lua_debug on
+lua_dump_depth 0
+lua_gc_method gc_step
+lua_gc_timeout 1000
+lua_gcstep 30
+mm_mm_net_srv_dedicated off
+mm_net_con_publicserver off
+mm_net_con_spectator 20
+mm_net_con_spectator_on off
+mm_net_filter_empty on
+mm_net_filter_full on
+mm_net_filter_listen on
+mm_net_filter_pass on
+mm_net_filter_wo_ff on
+mm_net_filter_wo_pass on
+mm_net_srv_gamemode st_deathmatch
+mm_net_srv_maxplayers 32
+mm_net_srv_name Stalker
+mm_net_srv_reinforcement_type reinforcement
+mm_net_weather_rateofchange 1.
+mouse_invert off
+mouse_sens 0.12
+mt_ai_vision on
+mt_alife on
+mt_bullets on
+mt_detail_path on
+mt_level_path on
+mt_level_sounds on
+mt_map on
+mt_object_handler on
+mt_script_gc on
+mt_sound_player on
+net_cl_icurvesize 0
+net_cl_icurvetype 0
+net_cl_interpolation 0.1
+net_cl_log_data off
+net_compressor_enabled 0
+net_compressor_gather_stats 0
+net_dbg_dump_export_obj 0
+net_dbg_dump_import_obj 0
+net_dbg_dump_update_read 0
+net_dbg_dump_update_write 0
+net_dedicated_sleep 5
+net_sv_gpmode 0
+net_sv_log_data off
+net_sv_pending_lim 3
+net_sv_update_rate 30
+ph_frequency 100.
+ph_ik_dist 15.
+ph_iterations 18
+psp_cam_offset (0.000000, 0.000000, 0.000000)
+r1_detail_textures on
+r1_dlights on
+r1_dlights_clip 50.
+r1_dynamic_lights 0.
+r1_ffp off
+r1_ffp_lightmaps off
+r1_fog_luminance 1.1
+r1_force_geomx 0
+r1_glows_per_frame 16
+r1_lmodel_lerp 0.1
+r1_pps_u 0.
+r1_pps_v 0.
+r1_software_skinning 0
+r1_ssa_lod_a 64.
+r1_ssa_lod_b 48.
+r1_tf_mipbias -0.5
+r2_aa off
+r2_aa_break (0.800000, 0.100000, 0.000000)
+r2_aa_kernel 0.5
+r2_aa_weight (0.250000, 0.250000, 0.000000)
+r2_aberration_val 0.2
+r2_allow_r1_lights off
+r2_detail_bump on
+r2_dhemi_count 5
+r2_dhemi_light_flow 0.1
+r2_dhemi_light_scale 0.2
+r2_dhemi_sky_scale 0.08
+r2_dhemi_smooth 1.
+r2_dof -0.400000,1.400000,1000.000000
+r2_dof_diff_far 70.
+r2_dof_diff_near 0.
+r2_dof_enable off
+r2_dof_kernel 4.
+r2_dof_pickable 0.
+r2_dof_sky 0.
+r2_dof_time 0.1
+r2_exp_donttest_shad off
+r2_fxaa 1.
+r2_gi off
+r2_gi_clip 0.001
+r2_gi_depth 1
+r2_gi_photons 16
+r2_gi_refl 0.9
+r2_gloss_factor 6.
+r2_lensdirt 1.
+r2_lensdirt_val 0.
+r2_lenswater 0.
+r2_lenswater_val 0.
+r2_ls_bloom_fast off
+r2_ls_bloom_kernel_b 0.5
+r2_ls_bloom_kernel_g 3.
+r2_ls_bloom_kernel_scale 0.55
+r2_ls_bloom_speed 100.
+r2_ls_bloom_threshold 0.
+r2_ls_depth_bias -0.0003
+r2_ls_depth_scale 1.00001
+r2_ls_dsm_kernel 0.7
+r2_ls_psm_kernel 0.7
+r2_ls_squality 1.
+r2_ls_ssm_kernel 0.7
+r2_lumasharpen 0.1
+r2_mblur 0.
+r2_mt_calculate 1
+r2_mt_render 1
+r2_parallax_h 0.02
+r2_parallax_range 75.
+r2_reflections 1.
+r2_shadow_cascede_old off
+r2_shadow_cascede_zcul on
+r2_shadow_map_size 2048
+r2_slight_fade 1.
+r2_smap_size 1024
+r2_soft_particles on
+r2_soft_water on
+r2_ssa_lod_a 64.
+r2_ssa_lod_b 48.
+r2_ssao st_opt_high
+r2_ssao_blur off
+r2_ssao_half_data off
+r2_ssao_hbao on
+r2_ssao_hdao off
+r2_ssao_mode hbao
+r2_ssao_opt_data on
+r2_sss_blend 0.066
+r2_sss_enable 1.
+r2_sss_intensity 1.
+r2_sss_phase1 0.09
+r2_sss_phase2 0.03
+r2_sss_radius 0.05
+r2_steep_parallax on
+r2_sun on
+r2_sun_depth_far_bias -0.0001
+r2_sun_depth_far_scale 1.
+r2_sun_depth_near_bias 0.0001
+r2_sun_depth_near_scale 1.
+r2_sun_details on
+r2_sun_far 51.
+r2_sun_focus on
+r2_sun_lumscale 3.
+r2_sun_lumscale_amb 0.2
+r2_sun_lumscale_hemi 0.6
+r2_sun_near 30.
+r2_sun_near_border 1.
+r2_sun_quality st_opt_extreme
+r2_sun_shafts st_opt_high
+r2_sun_shafts_value 0.1
+r2_sun_tsm on
+r2_sun_tsm_bias -0.01
+r2_sun_tsm_proj 0.3
+r2_technicolor 1.
+r2_tf_mipbias -0.5
+r2_tmp_w 0.
+r2_tmp_x 0.
+r2_tmp_y 0.
+r2_tmp_z 0.
+r2_tonemap on
+r2_tonemap_adaptation 2.
+r2_tonemap_amount 1.
+r2_tonemap_lowlum 0.4
+r2_tonemap_middlegray 1.5
+r2_vibrance_val 0.
+r2_vignette 0.
+r2_volumetric_lights on
+r2_wait_sleep 0
+r2_wait_timeout 500
+r2_zfill off
+r2_zfill_depth 0.25
+r2em 0.
+r3_dynamic_wet_surfaces on
+r3_dynamic_wet_surfaces_far 30.
+r3_dynamic_wet_surfaces_near 10.
+r3_dynamic_wet_surfaces_sm_res 256
+r3_gbuffer_opt on
+r3_minmax_sm on
+r3_msaa st_opt_off
+r3_msaa_alphatest st_opt_off
+r3_use_dx10_1 off
+r3_volumetric_smoke on
+r3_water_refl st_opt_high
+r3_water_refl_half_depth on
+r3_water_refl_jitter on
+r4_enable_tessellation off
+r4_wireframe off
+r__actor_body 0.
+r__actor_shadow on
+r__clear_models_on_unload 0
+r__color_add_b 0.
+r__color_add_g 0.
+r__color_add_r 0.
+r__color_base_b 1.
+r__color_base_g 1.
+r__color_base_r 1.
+r__detail_albedo_fix 10.
+r__detail_density 0.75
+r__detail_gloss_fix 64.
+r__detail_height 1.
+r__detail_normal_fix 64.
+r__detail_radius 60
+r__dlss ui_mm_dlss_ultra_quality
+r__dlss_reactive 1
+r__dtex_range 175.
+r__foliage_tandc 0
+r__fsr2 ui_mm_fsr2_off
+r__fsr3 0
+r__geometry_lod 0.7
+r__grading_preset ui_mm_grade_original
+r__grass_sway 0.
+r__grass_sway_speed 1.
+r__light_shadow_budget st_opt_shadow_lights_off
+r__optimize_dynamic_geom st_optimize_high
+r__optimize_static_geom st_optimize_high
+r__optimize_sun_shad 1
+r__perf_preset st_opt_perf_low
+r__puddles 1
+r__puddles_buildup 90.
+r__puddles_damp 0.1
+r__puddles_dark 1.
+r__puddles_dist ui_mm_puddles_dist_high
+r__puddles_dry 4.
+r__puddles_edge 0.3
+r__puddles_facing 0.1
+r__puddles_gbuf 1
+r__puddles_gloss 1.
+r__puddles_quality ui_mm_puddles_q_high
+r__puddles_refl 1
+r__puddles_refl_power 1.5
+r__puddles_rim 0.72
+r__puddles_rim_width 0.22
+r__puddles_ripple 1.
+r__puddles_size 0.8
+r__puddles_sky 0.15
+r__rain_bright 6.
+r__rain_drops 12000
+r__rain_len 2.
+r__rain_quality ui_mm_rain_quality_high
+r__rain_radius 20.
+r__rain_splash 1.
+r__rain_splash_bright 1.5
+r__rain_splash_time 0.4
+r__rain_width 0.2
+r__reactive_deadzone 0.00025
+r__reactive_dilate 3
+r__reactive_emissive 0.
+r__reactive_foliage 0.05
+r__reactive_motion 0.
+r__reactive_object 700.
+r__reactive_ref_fps 280
+r__reactive_transparent 0.
+r__reactive_water 0.
+r__render_scale 77
+r__sky_velocity 1
+r__supersample 1
+r__taa 0
+r__taa_jitter 1
+r__taa_mipbias 25
+r__taa_reactive 8.
+r__taa_sharp 40
+r__taa_sky 0
+r__tf_aniso 16
+r__torch_bright 3.
+r__torch_bright_item 3.
+r__upscale_preset st_da_upscale_off
+r__upscale_sharpness 35
+r__upscaler ui_mm_upscaler_dlss
+r__upscaler_quality ui_mm_upq_ultra_quality
+r__vguard_gloss 0.25
+r__vguard_radius 1
+r__vguard_still 1000.
+r__vguard_strength 1.
+r__wallmark_ttl 60.
+r__wallmarks_on_skeleton 0
+r__wind_scale 1.
+r__wind_shadow 1
+r__xess ui_mm_xess_off
+r__zoom_dof 0.
+rs_always_active on
+rs_c_brightness 1.2
+rs_c_contrast 1.
+rs_c_gamma 1.
+rs_cam_pos off
+rs_detail on
+rs_fps off
+rs_fps_graph off
+rs_fps_limit st_opt_fps_unlimited
+rs_fps_limit_in_menu 60
+rs_fullscreen off
+rs_hom_depth_draw off
+rs_refresh_60hz off
+rs_render_dynamics on
+rs_render_particles on
+rs_render_statics on
+rs_skeleton_update 32
+rs_stats off
+rs_v_sync off
+rs_vis_distance 0.8
+rs_wireframe off
+scope_fov 75.
+slot_0 medkit
+slot_1 bandage
+slot_2 stimpack
+slot_3 geiger
+snd_acceleration on
+snd_cache_size 32
+snd_device ui_mm_snd_device_auto
+snd_efx on
+snd_targets 256
+snd_use_float32 on
+snd_volume_eff 1.
+snd_volume_music 0.2
+start_time_single 1.1.1 12:0:0.0
+sv_activated_return 0
+sv_adm_menu_ban_time ?
+sv_adm_menu_ping_limit 25
+sv_anomalies_enabled 1
+sv_anomalies_length 3
+sv_artefact_respawn_delta 30
+sv_artefact_returning_time 45
+sv_artefact_spawn_force 0
+sv_artefact_stay_time 3
+sv_artefacts_count 10
+sv_auto_team_balance 0
+sv_auto_team_swap 1
+sv_bearercantsprint 0
+sv_client_reconnect_time 3
+sv_console_update_rate 1
+sv_cta_runkup_to_arts_div 1
+sv_dedicated_server_update_rate 100
+sv_dmgblockindicator 1
+sv_dmgblocktime 0
+sv_dump_online_statistics_period 0
+sv_forcerespawn 0
+sv_fraglimit 10
+sv_friendly_indicators 0
+sv_friendly_names 0
+sv_friendlyfire 1.
+sv_hail_to_winner_time 7
+sv_invincible_time 5
+sv_max_ping_limit 2000
+sv_max_suspicious_actions 5
+sv_pda_hunt 1
+sv_reinforcement_time 15
+sv_remove_corpse 1
+sv_remove_weapon 1
+sv_returnplayers 1
+sv_rpoint_freeze_time 0
+sv_saveconfigs 0
+sv_savescreenshots 0
+sv_shieldedbases 1
+sv_show_player_scores_time 3
+sv_spectr_firsteye 1
+sv_spectr_freefly 0
+sv_spectr_freelook 1
+sv_spectr_lookat 1
+sv_spectr_teamcamera 1
+sv_statistic_collect 1
+sv_suspicious_actions_ban_time ?
+sv_teamkill_limit 3
+sv_teamkill_punish 1
+sv_timelimit 0
+sv_traffic_optimization_level 0
+sv_vote_enabled 255
+sv_vote_participants 0
+sv_vote_quota 0.51
+sv_vote_time 1.
+sv_warm_up 0
+sv_write_update_bin 0
+texture_lod 0
+time_dilation_inventory off
+time_dilation_pda off
+time_factor 1.00000
+time_factor_single 10.
+ui_style ui_style_default
+ui_time_factor 1.000000
+ui_widescreen_layout 1
+vid_mode 1920x1080 (260Hz)
+vid_monitor 0. P2510H PLUS
+vid_window_mode st_opt_fullscreen_borderless
+wpn_aim_toggle 0
