@@ -3,3 +3,6 @@ appdata/
 original_x32_backup/
 *.log
 _dist/
+
+# ключ доступа — в репозиторий не попадает никогда
+da_token.txt

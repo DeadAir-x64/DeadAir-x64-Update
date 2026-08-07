@@ -43,6 +43,23 @@ $Owner  = 'DeadAir-x64'
 $Repo   = 'DeadAir-x64-Update'
 $Branch = 'main'
 
+# --- КЛЮЧ ДОСТУПА ---------------------------------------------------------------------------
+# Репозиторий закрытый, поэтому для загрузки нужен ключ. Он выдаётся только на ЧТЕНИЕ и
+# только этого репозитория: ничего другого им сделать нельзя — ни изменить, ни зайти в
+# учётную запись.
+#
+# Ключ можно либо вписать в строку ниже, либо положить рядом со скриптом в файл
+# `da_token.txt` — тогда сам скрипт останется без секретов.
+$Token = ''
+
+if (-not $Token) {
+    $tokenFile = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) 'da_token.txt'
+    if (Test-Path $tokenFile) { $Token = (Get-Content $tokenFile -Raw).Trim() }
+}
+
+$GhHeaders = @{ 'User-Agent' = 'DeadAir-x64-Updater' }
+if ($Token) { $GhHeaders['Authorization'] = "Bearer $Token" }
+
 $Root      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Work      = Join-Path $env:TEMP 'da_x64_update'
 $StampFile = Join-Path $Root 'appdata\da_x64_version.txt'
@@ -83,10 +100,17 @@ if ($installed) {
 Say '  Смотрю, что доступно...'
 try {
     $api = "https://api.github.com/repos/$Owner/$Repo/releases/latest"
-    $rel = Invoke-RestMethod -Uri $api -Headers @{ 'User-Agent' = 'DeadAir-x64-Updater' } -TimeoutSec 30
+    $rel = Invoke-RestMethod -Uri $api -Headers $GhHeaders -TimeoutSec 30
 } catch {
+    $hint = if ($Token) {
+        'Ключ доступа не подошёл — возможно, он отозван или истёк. Запросите новый у автора сборки.'
+    } else {
+        'Рядом со скриптом нет файла da_token.txt с ключом доступа, а сборка закрытая. Запросите ключ у автора.'
+    }
     Fail @"
-Не удалось связаться с GitHub. Проверьте интернет и попробуйте позже.
+Не удалось получить данные с GitHub.
+$hint
+
 Подробности: $($_.Exception.Message)
 "@
 }
@@ -116,10 +140,15 @@ $binZip  = Join-Path $Work 'bin.zip'
 $dataZip = Join-Path $Work 'gamedata.zip'
 
 Say "  Качаю модули движка ($([math]::Round($asset.size/1MB)) МБ)..."
-Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $binZip -UseBasicParsing
+# Для закрытого репозитория обычная ссылка на файл не годится: нужен запрос к API
+# с ключом и заголовком octet-stream, иначе вернётся описание файла вместо самого файла.
+$assetHeaders = $GhHeaders.Clone()
+$assetHeaders['Accept'] = 'application/octet-stream'
+$assetUrl = "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($asset.id)"
+Invoke-WebRequest -Uri $assetUrl -Headers $assetHeaders -OutFile $binZip -UseBasicParsing
 
 Say '  Качаю игровые файлы...'
-Invoke-WebRequest -Uri "https://github.com/$Owner/$Repo/archive/refs/heads/$Branch.zip" -OutFile $dataZip -UseBasicParsing
+Invoke-WebRequest -Uri "https://api.github.com/repos/$Owner/$Repo/zipball/$Branch" -Headers $GhHeaders -OutFile $dataZip -UseBasicParsing
 
 # --- 5. Бэкап оригинала (только при первой установке) --------------------------------------
 if (-not $installed) {
