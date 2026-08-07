@@ -223,7 +223,6 @@ hud_nearwall_speed 8.
 hud_nearwall_target_fov 0.35
 hud_weapon on
 keypress_on_start 0
-load_last_save cap3347 - autosave
 lua_debug on
 lua_dump_depth 0
 lua_gc_method gc_step
