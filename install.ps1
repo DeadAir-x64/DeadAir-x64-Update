@@ -85,176 +85,7 @@ if (Get-Process xrEngine -ErrorAction SilentlyContinue) {
     Fail 'Игра запущена. Закройте её и запустите установку заново.'
 }
 
-# --- 2. Что уже стоит ----------------------------------------------------------------------
-$installed = if (Test-Path $StampFile) { (Get-Content $StampFile -Raw).Trim() } else { '' }
-$oldFiles  = if (Test-Path $Manifest) { @(Get-Content $Manifest | Where-Object { $_.Trim() }) } else { @() }
-
-if ($installed) {
-    Say "  Установлено сейчас: $installed"
-    if ($oldFiles.Count) { Say "  Файлов от прошлой установки: $($oldFiles.Count)" 'DarkGray' }
-} else {
-    Say '  Версия x64 ещё не ставилась — будет первая установка.'
-}
-
-# --- 3. Узнаём актуальную версию -----------------------------------------------------------
-Say '  Смотрю, что доступно...'
-try {
-    $api = "https://api.github.com/repos/$Owner/$Repo/releases/latest"
-    $rel = Invoke-RestMethod -Uri $api -Headers $GhHeaders -TimeoutSec 30
-} catch {
-    $hint = if ($Token) {
-        'Ключ доступа не подошёл — возможно, он отозван или истёк. Запросите новый у автора сборки.'
-    } else {
-        'Рядом со скриптом нет файла da_token.txt с ключом доступа, а сборка закрытая. Запросите ключ у автора.'
-    }
-    Fail @"
-Не удалось получить данные с GitHub.
-$hint
-
-Подробности: $($_.Exception.Message)
-"@
-}
-
-$latest = $rel.tag_name
-if (-not $latest) { Fail 'В репозитории пока нет ни одного выпуска.' }
-
-if ($installed -eq $latest) {
-    Say ''
-    Say "  У вас уже актуальная версия ($latest). Обновлять нечего." 'Green'
-    Say ''
-    Read-Host 'Enter — выход'
-    exit 0
-}
-
-Say "  Доступна: $latest" 'Yellow'
-Say ''
-
-$asset = $rel.assets | Where-Object { $_.name -like 'bin*.zip' } | Select-Object -First 1
-if (-not $asset) { Fail "В выпуске $latest нет файла bin*.zip — сообщите об этом автору сборки." }
-
-# --- 4. Качаем -----------------------------------------------------------------------------
-if (Test-Path $Work) { Remove-Item $Work -Recurse -Force }
-New-Item -ItemType Directory -Force $Work | Out-Null
-
-$binZip  = Join-Path $Work 'bin.zip'
-$dataZip = Join-Path $Work 'gamedata.zip'
-
-Say "  Качаю модули движка ($([math]::Round($asset.size/1MB)) МБ)..."
-# Для закрытого репозитория обычная ссылка на файл не годится: нужен запрос к API
-# с ключом и заголовком octet-stream, иначе вернётся описание файла вместо самого файла.
-$assetHeaders = $GhHeaders.Clone()
-$assetHeaders['Accept'] = 'application/octet-stream'
-$assetUrl = "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($asset.id)"
-Invoke-WebRequest -Uri $assetUrl -Headers $assetHeaders -OutFile $binZip -UseBasicParsing
-
-Say '  Качаю игровые файлы...'
-Invoke-WebRequest -Uri "https://api.github.com/repos/$Owner/$Repo/zipball/$Branch" -Headers $GhHeaders -OutFile $dataZip -UseBasicParsing
-
-# --- 5. Бэкап оригинала (только при первой установке) --------------------------------------
-if (-not $installed) {
-    $backup = Join-Path $Root 'original_x32_backup'
-    Say '  Сохраняю оригинальные файлы 32-битной версии...'
-    New-Item -ItemType Directory -Force $backup | Out-Null
-    Get-ChildItem -Path "$Root\*" -Include *.dll,*.exe -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -notlike 'unins*' } |
-        ForEach-Object { Move-Item $_.FullName (Join-Path $backup $_.Name) -Force }
-    if (Test-Path (Join-Path $Root 'fsgame.ltx')) {
-        Copy-Item (Join-Path $Root 'fsgame.ltx') (Join-Path $backup 'fsgame.ltx') -Force
-    }
-    Say '  Оригинал лежит в original_x32_backup — не удаляйте её.' 'DarkGray'
-}
-
-# --- 6. Распаковываем ----------------------------------------------------------------------
-Say '  Распаковываю...'
-# Распаковка средствами .NET, а не Expand-Archive: та появилась только в PowerShell 5.0,
-# то есть отсутствует на Windows 7 без свежего WMF.
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-function Unzip($archive, $target) {
-    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
-    [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $target)
-}
-Unzip $binZip (Join-Path $Work 'bin_new')
-Unzip $dataZip (Join-Path $Work 'data_new')
-
-$binSrc = Join-Path $Work 'bin_new'
-if (Test-Path (Join-Path $binSrc 'bin')) { $binSrc = Join-Path $binSrc 'bin' }
-
-$repoDir = Get-ChildItem (Join-Path $Work 'data_new') -Directory | Select-Object -First 1
-if (-not $repoDir) { Fail 'Архив игровых файлов оказался пустым.' }
-$dataSrc = Join-Path $repoDir.FullName 'gamedata'
-if (-not (Test-Path $dataSrc)) { Fail 'В архиве нет папки gamedata.' }
-
-# --- 7. Собираем список того, что ставим ---------------------------------------------------
-# Пути относительные, от корня игры — так их можно сравнивать между версиями.
-$newFiles = New-Object System.Collections.Generic.List[string]
-
-Get-ChildItem $binSrc -Recurse -File | ForEach-Object {
-    $newFiles.Add('bin\' + $_.FullName.Substring($binSrc.Length).TrimStart('\'))
-}
-Get-ChildItem $dataSrc -Recurse -File | ForEach-Object {
-    $newFiles.Add('gamedata\' + $_.FullName.Substring($dataSrc.Length).TrimStart('\'))
-}
-
-# --- 8. Раскладываем -----------------------------------------------------------------------
-Say '  Ставлю файлы...'
-$binDst = Join-Path $Root 'bin'
-New-Item -ItemType Directory -Force $binDst | Out-Null
-Copy-Item "$binSrc\*" $binDst -Recurse -Force
-Copy-Item $dataSrc $Root -Recurse -Force
-Copy-Item (Join-Path $repoDir.FullName 'config\fsgame.ltx') (Join-Path $Root 'fsgame.ltx') -Force
-
-# --- 9. Убираем то, чего в новой сборке больше нет ------------------------------------------
-# Считаем только по манифесту: файл удаляется, если МЫ его ставили и теперь он исчез.
-# Всё, чего в манифесте не было, — чужое: другие моды, ручные правки. Не трогаем.
-if ($oldFiles.Count) {
-    # New-Object, а не ::new() — тот появился в PowerShell 5.0.
-    $newSet = New-Object 'System.Collections.Generic.HashSet[string]' (
-        [string[]]$newFiles, [System.StringComparer]::OrdinalIgnoreCase)
-
-    $removed = 0
-    foreach ($item in $oldFiles) {
-        # ⚠️ Переменная НЕ $rel: так называется объект выпуска, полученный выше.
-        # Перезапись сработала бы тихо и всплыла бы там, где его читают следующим.
-        if ($newSet.Contains($item)) { continue }
-        $path = Join-Path $Root $item
-        if (Test-Path $path) {
-            try { Remove-Item $path -Force; $removed++ }
-            catch { Say "  ! не удалось убрать $item" 'DarkYellow' }
-        }
-    }
-
-    if ($removed) {
-        Say "  Убрано устаревших файлов: $removed" 'DarkGray'
-
-        # пустые папки, оставшиеся после уборки
-        foreach ($dir in @('gamedata', 'bin')) {
-            $full = Join-Path $Root $dir
-            if (-not (Test-Path $full)) { continue }
-            Get-ChildItem $full -Recurse -Directory |
-                Sort-Object { $_.FullName.Length } -Descending |
-                Where-Object { -not (Get-ChildItem $_.FullName -Recurse -File | Select-Object -First 1) } |
-                ForEach-Object { Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue }
-        }
-    } else {
-        Say '  Устаревших файлов не было.' 'DarkGray'
-    }
-}
-
-# --- 10. Настройки и папки ------------------------------------------------------------------
-New-Item -ItemType Directory -Force (Join-Path $Root 'appdata') | Out-Null
-$userLtx = Join-Path $Root 'appdata\user.ltx'
-if (-not (Test-Path $userLtx)) {
-    Copy-Item (Join-Path $repoDir.FullName 'config\user.ltx.default') $userLtx -Force
-    Say '  Настройки выставлены по умолчанию.' 'DarkGray'
-} else {
-    Say '  Ваши настройки сохранены как есть.' 'DarkGray'
-}
-
-foreach ($sub in @('logs', 'savedgames', 'shaders_cache_oxr')) {
-    New-Item -ItemType Directory -Force (Join-Path $Root "appdata\$sub") | Out-Null
-}
-
-# --- 10a. Летний архив ----------------------------------------------------------------------
+# --- 2. Летний архив ----------------------------------------------------------------------
 # Лето в Dead Air — это архив xtra_green.xdb0. В оригинальной установке он лежит НЕ в database,
 # а в отдельной папке «Летняя растительность (опционально)»: автор оставил его на усмотрение
 # игрока, и переносить его надо было руками.
@@ -293,6 +124,175 @@ if (-not (Test-Path $seasonArchive)) {
     }
 }
 
+# --- 3. Что уже стоит ----------------------------------------------------------------------
+$installed = if (Test-Path $StampFile) { (Get-Content $StampFile -Raw).Trim() } else { '' }
+$oldFiles  = if (Test-Path $Manifest) { @(Get-Content $Manifest | Where-Object { $_.Trim() }) } else { @() }
+
+if ($installed) {
+    Say "  Установлено сейчас: $installed"
+    if ($oldFiles.Count) { Say "  Файлов от прошлой установки: $($oldFiles.Count)" 'DarkGray' }
+} else {
+    Say '  Версия x64 ещё не ставилась — будет первая установка.'
+}
+
+# --- 4. Узнаём актуальную версию -----------------------------------------------------------
+Say '  Смотрю, что доступно...'
+try {
+    $api = "https://api.github.com/repos/$Owner/$Repo/releases/latest"
+    $rel = Invoke-RestMethod -Uri $api -Headers $GhHeaders -TimeoutSec 30
+} catch {
+    $hint = if ($Token) {
+        'Ключ доступа не подошёл — возможно, он отозван или истёк. Запросите новый у автора сборки.'
+    } else {
+        'Рядом со скриптом нет файла da_token.txt с ключом доступа, а сборка закрытая. Запросите ключ у автора.'
+    }
+    Fail @"
+Не удалось получить данные с GitHub.
+$hint
+
+Подробности: $($_.Exception.Message)
+"@
+}
+
+$latest = $rel.tag_name
+if (-not $latest) { Fail 'В репозитории пока нет ни одного выпуска.' }
+
+if ($installed -eq $latest) {
+    Say ''
+    Say "  У вас уже актуальная версия ($latest). Обновлять нечего." 'Green'
+    Say ''
+    Read-Host 'Enter — выход'
+    exit 0
+}
+
+Say "  Доступна: $latest" 'Yellow'
+Say ''
+
+$asset = $rel.assets | Where-Object { $_.name -like 'bin*.zip' } | Select-Object -First 1
+if (-not $asset) { Fail "В выпуске $latest нет файла bin*.zip — сообщите об этом автору сборки." }
+
+# --- 5. Качаем -----------------------------------------------------------------------------
+if (Test-Path $Work) { Remove-Item $Work -Recurse -Force }
+New-Item -ItemType Directory -Force $Work | Out-Null
+
+$binZip  = Join-Path $Work 'bin.zip'
+$dataZip = Join-Path $Work 'gamedata.zip'
+
+Say "  Качаю модули движка ($([math]::Round($asset.size/1MB)) МБ)..."
+# Для закрытого репозитория обычная ссылка на файл не годится: нужен запрос к API
+# с ключом и заголовком octet-stream, иначе вернётся описание файла вместо самого файла.
+$assetHeaders = $GhHeaders.Clone()
+$assetHeaders['Accept'] = 'application/octet-stream'
+$assetUrl = "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($asset.id)"
+Invoke-WebRequest -Uri $assetUrl -Headers $assetHeaders -OutFile $binZip -UseBasicParsing
+
+Say '  Качаю игровые файлы...'
+Invoke-WebRequest -Uri "https://api.github.com/repos/$Owner/$Repo/zipball/$Branch" -Headers $GhHeaders -OutFile $dataZip -UseBasicParsing
+
+# --- 6. Бэкап оригинала (только при первой установке) --------------------------------------
+if (-not $installed) {
+    $backup = Join-Path $Root 'original_x32_backup'
+    Say '  Сохраняю оригинальные файлы 32-битной версии...'
+    New-Item -ItemType Directory -Force $backup | Out-Null
+    Get-ChildItem -Path "$Root\*" -Include *.dll,*.exe -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notlike 'unins*' } |
+        ForEach-Object { Move-Item $_.FullName (Join-Path $backup $_.Name) -Force }
+    if (Test-Path (Join-Path $Root 'fsgame.ltx')) {
+        Copy-Item (Join-Path $Root 'fsgame.ltx') (Join-Path $backup 'fsgame.ltx') -Force
+    }
+    Say '  Оригинал лежит в original_x32_backup — не удаляйте её.' 'DarkGray'
+}
+
+# --- 7. Распаковываем ----------------------------------------------------------------------
+Say '  Распаковываю...'
+# Распаковка средствами .NET, а не Expand-Archive: та появилась только в PowerShell 5.0,
+# то есть отсутствует на Windows 7 без свежего WMF.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+function Unzip($archive, $target) {
+    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $target)
+}
+Unzip $binZip (Join-Path $Work 'bin_new')
+Unzip $dataZip (Join-Path $Work 'data_new')
+
+$binSrc = Join-Path $Work 'bin_new'
+if (Test-Path (Join-Path $binSrc 'bin')) { $binSrc = Join-Path $binSrc 'bin' }
+
+$repoDir = Get-ChildItem (Join-Path $Work 'data_new') -Directory | Select-Object -First 1
+if (-not $repoDir) { Fail 'Архив игровых файлов оказался пустым.' }
+$dataSrc = Join-Path $repoDir.FullName 'gamedata'
+if (-not (Test-Path $dataSrc)) { Fail 'В архиве нет папки gamedata.' }
+
+# --- 8. Собираем список того, что ставим ---------------------------------------------------
+# Пути относительные, от корня игры — так их можно сравнивать между версиями.
+$newFiles = New-Object System.Collections.Generic.List[string]
+
+Get-ChildItem $binSrc -Recurse -File | ForEach-Object {
+    $newFiles.Add('bin\' + $_.FullName.Substring($binSrc.Length).TrimStart('\'))
+}
+Get-ChildItem $dataSrc -Recurse -File | ForEach-Object {
+    $newFiles.Add('gamedata\' + $_.FullName.Substring($dataSrc.Length).TrimStart('\'))
+}
+
+# --- 9. Раскладываем -----------------------------------------------------------------------
+Say '  Ставлю файлы...'
+$binDst = Join-Path $Root 'bin'
+New-Item -ItemType Directory -Force $binDst | Out-Null
+Copy-Item "$binSrc\*" $binDst -Recurse -Force
+Copy-Item $dataSrc $Root -Recurse -Force
+Copy-Item (Join-Path $repoDir.FullName 'config\fsgame.ltx') (Join-Path $Root 'fsgame.ltx') -Force
+
+# --- 10. Убираем то, чего в новой сборке больше нет ------------------------------------------
+# Считаем только по манифесту: файл удаляется, если МЫ его ставили и теперь он исчез.
+# Всё, чего в манифесте не было, — чужое: другие моды, ручные правки. Не трогаем.
+if ($oldFiles.Count) {
+    # New-Object, а не ::new() — тот появился в PowerShell 5.0.
+    $newSet = New-Object 'System.Collections.Generic.HashSet[string]' (
+        [string[]]$newFiles, [System.StringComparer]::OrdinalIgnoreCase)
+
+    $removed = 0
+    foreach ($item in $oldFiles) {
+        # ⚠️ Переменная НЕ $rel: так называется объект выпуска, полученный выше.
+        # Перезапись сработала бы тихо и всплыла бы там, где его читают следующим.
+        if ($newSet.Contains($item)) { continue }
+        $path = Join-Path $Root $item
+        if (Test-Path $path) {
+            try { Remove-Item $path -Force; $removed++ }
+            catch { Say "  ! не удалось убрать $item" 'DarkYellow' }
+        }
+    }
+
+    if ($removed) {
+        Say "  Убрано устаревших файлов: $removed" 'DarkGray'
+
+        # пустые папки, оставшиеся после уборки
+        foreach ($dir in @('gamedata', 'bin')) {
+            $full = Join-Path $Root $dir
+            if (-not (Test-Path $full)) { continue }
+            Get-ChildItem $full -Recurse -Directory |
+                Sort-Object { $_.FullName.Length } -Descending |
+                Where-Object { -not (Get-ChildItem $_.FullName -Recurse -File | Select-Object -First 1) } |
+                ForEach-Object { Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue }
+        }
+    } else {
+        Say '  Устаревших файлов не было.' 'DarkGray'
+    }
+}
+
+# --- 11. Настройки и папки ------------------------------------------------------------------
+New-Item -ItemType Directory -Force (Join-Path $Root 'appdata') | Out-Null
+$userLtx = Join-Path $Root 'appdata\user.ltx'
+if (-not (Test-Path $userLtx)) {
+    Copy-Item (Join-Path $repoDir.FullName 'config\user.ltx.default') $userLtx -Force
+    Say '  Настройки выставлены по умолчанию.' 'DarkGray'
+} else {
+    Say '  Ваши настройки сохранены как есть.' 'DarkGray'
+}
+
+foreach ($sub in @('logs', 'savedgames', 'shaders_cache_oxr')) {
+    New-Item -ItemType Directory -Force (Join-Path $Root "appdata\$sub") | Out-Null
+}
+
 $launcher = Join-Path $Root 'Dead Air x64.cmd'
 @"
 @echo off
@@ -300,7 +300,7 @@ cd /d "%~dp0"
 start "" "%~dp0bin\xrEngine.exe" -r4 -force_flushlog
 "@ | Out-File -FilePath $launcher -Encoding oem -Force
 
-# --- 11. Запоминаем, что поставили ----------------------------------------------------------
+# --- 12. Запоминаем, что поставили ----------------------------------------------------------
 $newFiles | Sort-Object -Unique | Out-File -FilePath $Manifest -Encoding utf8 -Force
 $latest | Out-File -FilePath $StampFile -Encoding utf8 -Force
 Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
