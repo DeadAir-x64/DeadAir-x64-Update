@@ -217,6 +217,9 @@
 	<string id="ui_mm_fps_limit">
 		<text>Ограничение FPS</text>
 	</string>
+	<string id="st_opt_fps_vsync">
+		<text>Вертикальная синхронизация</text>
+	</string>
 	<string id="st_opt_fps_unlimited">
 		<text>Без ограничений</text>
 	</string>
