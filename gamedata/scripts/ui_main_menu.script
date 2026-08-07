@@ -39,6 +39,59 @@ function main_menu:Update()
 	end
 end 
 
+-- Подпись сборки в левом нижнем углу меню.
+--
+-- Номер берётся из appdata\da_x64_version.txt — эту метку пишет установщик при каждом
+-- обновлении. Значит подпись показывает то, что реально стоит у игрока, и её не нужно
+-- править руками к каждому релизу. Файла может не быть (пакет распакован вручную) —
+-- тогда показываем то, что зашито при сборке пакета.
+--
+-- Чтение под pcall намеренно: это стартовое меню, и любая ошибка здесь оставила бы
+-- игрока вообще без главного экрана.
+local da_build_fallback = "zbt-2026.08.07-2"
+
+local function da_build_stamp()
+	local ok, stamp = pcall(function()
+		local path = getFS():update_path("$app_data_root$", "da_x64_version.txt")
+		local handle = io.open(path, "rb")
+		if not handle then
+			return nil
+		end
+		local text = handle:read("*a")
+		handle:close()
+		return text
+	end)
+
+	if not ok or type(stamp) ~= "string" then
+		return da_build_fallback
+	end
+
+	stamp = string.gsub(stamp, "%s", "")
+	if stamp == "" then
+		return da_build_fallback
+	end
+
+	return stamp
+end
+
+-- Метка вида "zbt-2026.08.07" превращается в "ZBT 07.08.2026". Незнакомый формат
+-- показываем как есть: непривычная строка лучше потерянной.
+function da_build_label()
+	local stamp = da_build_stamp()
+	local kind, year, month, day, revision =
+		string.match(stamp, "^(%a+)%-(%d%d%d%d)%.(%d%d)%.(%d%d)%-?(%d*)$")
+	if not kind then
+		return stamp
+	end
+
+	local label = string.upper(kind) .. " " .. day .. "." .. month .. "." .. year
+	if revision ~= "" then
+		label = label .. " (" .. revision .. ")"
+	end
+
+	return label
+end
+
 function main_menu:InitControls()
 	self:SetWndRect					(Frect():set(0,0,1024,768))
 
@@ -54,7 +107,7 @@ function main_menu:InitControls()
 	local _ver = xml:InitStatic		("static_version",self)
 	local mm						= _G.main_menu.get_main_menu()
 	_ver:TextControl():SetTextColor (GetARGB(190, 190, 190, 190))
-	_ver:TextControl():SetText		("Dead Air 0.98b [05.07.2018] + Community Bugfixes [31.08.24]")
+	_ver:TextControl():SetText		("Dead Air x64 0.98b [" .. da_build_label() .. "]")
 	
 	-- Message Window 
 	self.msg_wnd = xml:InitFrame("msg_wnd:background",self)

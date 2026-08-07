@@ -1,6 +1,5 @@
 local tm = {}
 function trade_init(npc, cfg)
-	printf("[DA_TRADE] trade_init: npc=%s cfg=%s", npc and npc:name(), tostring(cfg))
 	-- [DA_PORT] Конфиг торговли грузим ВСЕГДА, даже если актёра ещё нет в db.
 	--
 	-- Здесь стоял `if not (db.actor) then return end`, и это убивало торговлю целиком: логика NPC
@@ -17,7 +16,6 @@ function trade_init(npc, cfg)
 	
 	-- no use having trade for enemies or zombied (no dialogs)
 	if (db.actor) and (npc:relation(db.actor) == game_object.enemy or npc:character_community() == "zombied") then 
-		printf("[DA_TRADE] trade_init: ВЫХОД — враг или зомби")
 		return 
 	end
 	
@@ -31,10 +29,8 @@ function trade_init(npc, cfg)
 	tm[id].cfg_ltx = cfg
 	tm[id].config = ini_file(cfg)
 	if not (tm[id].config) then
-		printf("[DA_TRADE] trade_init: ВЫХОД — ini_file(%s) вернул nil", tostring(cfg))
 		tm[id] = nil
 	else
-		printf("[DA_TRADE] trade_init: готово, конфиг загружен")
 	end
 end
 
@@ -80,8 +76,6 @@ function setup_buy_sell_conditions(npc,id)
 	--printf("-TRADE INIT for "..npc:name())
 	
 	local trade_update = utils.load_ctime(db.actor,id.."_resupply_time")
-	printf("[DA_TRADE] условия выставлены, список=%s, отметка пополнения=%s", tostring(str),
-		trade_update and utils.CTimeToSec(trade_update) or "нет")
 	if (trade_update) then
 		--printf("LOADED: "..game.get_game_time():diffSec(trade_update))	
 	end
@@ -120,13 +114,11 @@ end
 
 function update(npc)
 	local id = npc and npc:id()
-	printf("[DA_TRADE] update: npc=%s id=%s", npc and npc:name(), tostring(id))
 	if not (id) then 
 		return 
 	end
 	
 	if (tm[id] == nil or tm[id].config == nil) then
-		printf("[DA_TRADE] update: ВЫХОД — trade_init для этого NPC не отработал")
 		--printf("TRADE [%s]:  trade_manager is nil", npc:name())
 		return
 	end
@@ -135,7 +127,6 @@ function update(npc)
 	
 	local tg = time_global()
 	if (tm[id].resupply_time and game.get_game_time():diffSec(tm[id].resupply_time) < 86400)  then
-		printf("[DA_TRADE] update: ВЫХОД — сутки с прошлого пополнения не прошли")
 		return
 	end
 	tm[id].resupply_time = game.get_game_time()
