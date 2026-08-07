@@ -14,6 +14,30 @@
 
 $ErrorActionPreference = 'Stop'
 
+# --- СОВМЕСТИМОСТЬ СО СТАРЫМИ WINDOWS -------------------------------------------------------
+# GitHub принимает только TLS 1.2, а Windows 7 и ранние сборки Windows 10 по умолчанию
+# предлагают TLS 1.0 — соединение обрывается ещё до запроса, с невнятной ошибкой.
+# Ставим протокол явно; на системах, где Tls12 недоступен вовсе, просто идём дальше и
+# честно скажем об этом при неудачной загрузке.
+try {
+    [Net.ServicePointManager]::SecurityProtocol =
+        [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+} catch { }
+
+# Windows 7 из коробки идёт с PowerShell 2.0, где нет ни Invoke-WebRequest, ни распаковки.
+# Проверяем сразу: лучше понятное сообщение в начале, чем непонятная ошибка в середине.
+if ($PSVersionTable.PSVersion.Major -lt 3) {
+    Write-Host ''
+    Write-Host '  Нужен PowerShell версии 3.0 или новее.' -ForegroundColor Red
+    Write-Host "  У вас: $($PSVersionTable.PSVersion)" -ForegroundColor Red
+    Write-Host ''
+    Write-Host '  На Windows 7 он ставится обновлением Windows Management Framework:'
+    Write-Host '  https://www.microsoft.com/download/details.aspx?id=54616'
+    Write-Host ''
+    Read-Host 'Enter — выход'
+    exit 1
+}
+
 # --- КУДА СМОТРЕТЬ ------------------------------------------------------------------------
 $Owner  = 'DeadAir-x64'
 $Repo   = 'DeadAir-x64-Update'
@@ -113,8 +137,15 @@ if (-not $installed) {
 
 # --- 6. Распаковываем ----------------------------------------------------------------------
 Say '  Распаковываю...'
-Expand-Archive -Path $binZip -DestinationPath (Join-Path $Work 'bin_new') -Force
-Expand-Archive -Path $dataZip -DestinationPath (Join-Path $Work 'data_new') -Force
+# Распаковка средствами .NET, а не Expand-Archive: та появилась только в PowerShell 5.0,
+# то есть отсутствует на Windows 7 без свежего WMF.
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+function Unzip($archive, $target) {
+    if (Test-Path $target) { Remove-Item $target -Recurse -Force }
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($archive, $target)
+}
+Unzip $binZip (Join-Path $Work 'bin_new')
+Unzip $dataZip (Join-Path $Work 'data_new')
 
 $binSrc = Join-Path $Work 'bin_new'
 if (Test-Path (Join-Path $binSrc 'bin')) { $binSrc = Join-Path $binSrc 'bin' }
@@ -147,7 +178,8 @@ Copy-Item (Join-Path $repoDir.FullName 'config\fsgame.ltx') (Join-Path $Root 'fs
 # Считаем только по манифесту: файл удаляется, если МЫ его ставили и теперь он исчез.
 # Всё, чего в манифесте не было, — чужое: другие моды, ручные правки. Не трогаем.
 if ($oldFiles.Count) {
-    $newSet = [System.Collections.Generic.HashSet[string]]::new(
+    # New-Object, а не ::new() — тот появился в PowerShell 5.0.
+    $newSet = New-Object 'System.Collections.Generic.HashSet[string]' (
         [string[]]$newFiles, [System.StringComparer]::OrdinalIgnoreCase)
 
     $removed = 0
