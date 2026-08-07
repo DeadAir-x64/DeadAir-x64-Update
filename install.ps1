@@ -151,12 +151,14 @@ if ($oldFiles.Count) {
         [string[]]$newFiles, [System.StringComparer]::OrdinalIgnoreCase)
 
     $removed = 0
-    foreach ($rel in $oldFiles) {
-        if ($newSet.Contains($rel)) { continue }
-        $path = Join-Path $Root $rel
+    foreach ($item in $oldFiles) {
+        # ⚠️ Переменная НЕ $rel: так называется объект выпуска, полученный выше.
+        # Перезапись сработала бы тихо и всплыла бы там, где его читают следующим.
+        if ($newSet.Contains($item)) { continue }
+        $path = Join-Path $Root $item
         if (Test-Path $path) {
             try { Remove-Item $path -Force; $removed++ }
-            catch { Say "  ! не удалось убрать $rel" 'DarkYellow' }
+            catch { Say "  ! не удалось убрать $item" 'DarkYellow' }
         }
     }
 
