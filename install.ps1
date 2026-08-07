@@ -1,16 +1,20 @@
-# Dead Air x64 — установка и обновление поверх чистой версии.
+﻿# Dead Air x64 — установка и обновление поверх чистой версии.
 #
 # Кладётся в папку с игрой (туда, где database и fsgame.ltx) и запускается.
 # Первый запуск ставит x64-версию, каждый следующий — обновляет её до актуальной.
 #
 # Что качается: bin (модули движка) из GitHub Releases и gamedata из репозитория.
 # Архивы игры (10 ГБ) НЕ качаются — они одинаковы в оригинале и в x64-версии,
-# сверено побайтово по размерам.
+# сверено по размерам всех четырнадцати.
+#
+# Обновление УБИРАЕТ за собой: файлы, которые мы ставили раньше, а в новой сборке их
+# больше нет, удаляются. Иначе у игрока копился бы мусор из прошлых версий — а лишний
+# скрипт или шейдер ломает игру не хуже недостающего. Что именно поставлено, помнит
+# манифест; файлы, которых в нём нет, не трогаются никогда — это чужое.
 
 $ErrorActionPreference = 'Stop'
 
 # --- КУДА СМОТРЕТЬ ------------------------------------------------------------------------
-# Заполняется один раз владельцем репозитория.
 $Owner  = 'DeadAir-x64'
 $Repo   = 'DeadAir-x64-Update'
 $Branch = 'main'
@@ -18,6 +22,7 @@ $Branch = 'main'
 $Root      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Work      = Join-Path $env:TEMP 'da_x64_update'
 $StampFile = Join-Path $Root 'appdata\da_x64_version.txt'
+$Manifest  = Join-Path $Root 'appdata\da_x64_files.txt'
 
 function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
 function Fail($text) { Say ''; Say "ОШИБКА: $text" 'Red'; Say ''; Read-Host 'Enter — выход'; exit 1 }
@@ -41,7 +46,14 @@ if (Get-Process xrEngine -ErrorAction SilentlyContinue) {
 
 # --- 2. Что уже стоит ----------------------------------------------------------------------
 $installed = if (Test-Path $StampFile) { (Get-Content $StampFile -Raw).Trim() } else { '' }
-if ($installed) { Say "  Установлено сейчас: $installed" } else { Say '  Версия x64 ещё не ставилась — будет первая установка.' }
+$oldFiles  = if (Test-Path $Manifest) { @(Get-Content $Manifest | Where-Object { $_.Trim() }) } else { @() }
+
+if ($installed) {
+    Say "  Установлено сейчас: $installed"
+    if ($oldFiles.Count) { Say "  Файлов от прошлой установки: $($oldFiles.Count)" 'DarkGray' }
+} else {
+    Say '  Версия x64 ещё не ставилась — будет первая установка.'
+}
 
 # --- 3. Узнаём актуальную версию -----------------------------------------------------------
 Say '  Смотрю, что доступно...'
@@ -96,29 +108,76 @@ if (-not $installed) {
     if (Test-Path (Join-Path $Root 'fsgame.ltx')) {
         Copy-Item (Join-Path $Root 'fsgame.ltx') (Join-Path $backup 'fsgame.ltx') -Force
     }
-    Say "  Оригинал лежит в original_x32_backup — не удаляйте её." 'DarkGray'
+    Say '  Оригинал лежит в original_x32_backup — не удаляйте её.' 'DarkGray'
 }
 
-# --- 6. Раскладываем -----------------------------------------------------------------------
+# --- 6. Распаковываем ----------------------------------------------------------------------
 Say '  Распаковываю...'
 Expand-Archive -Path $binZip -DestinationPath (Join-Path $Work 'bin_new') -Force
 Expand-Archive -Path $dataZip -DestinationPath (Join-Path $Work 'data_new') -Force
 
-# bin: содержимое архива может лежать как в корне, так и в подпапке bin\
 $binSrc = Join-Path $Work 'bin_new'
 if (Test-Path (Join-Path $binSrc 'bin')) { $binSrc = Join-Path $binSrc 'bin' }
+
+$repoDir = Get-ChildItem (Join-Path $Work 'data_new') -Directory | Select-Object -First 1
+if (-not $repoDir) { Fail 'Архив игровых файлов оказался пустым.' }
+$dataSrc = Join-Path $repoDir.FullName 'gamedata'
+if (-not (Test-Path $dataSrc)) { Fail 'В архиве нет папки gamedata.' }
+
+# --- 7. Собираем список того, что ставим ---------------------------------------------------
+# Пути относительные, от корня игры — так их можно сравнивать между версиями.
+$newFiles = New-Object System.Collections.Generic.List[string]
+
+Get-ChildItem $binSrc -Recurse -File | ForEach-Object {
+    $newFiles.Add('bin\' + $_.FullName.Substring($binSrc.Length).TrimStart('\'))
+}
+Get-ChildItem $dataSrc -Recurse -File | ForEach-Object {
+    $newFiles.Add('gamedata\' + $_.FullName.Substring($dataSrc.Length).TrimStart('\'))
+}
+
+# --- 8. Раскладываем -----------------------------------------------------------------------
+Say '  Ставлю файлы...'
 $binDst = Join-Path $Root 'bin'
 New-Item -ItemType Directory -Force $binDst | Out-Null
 Copy-Item "$binSrc\*" $binDst -Recurse -Force
-
-# gamedata и конфиги из репозитория
-$repoDir = Get-ChildItem (Join-Path $Work 'data_new') -Directory | Select-Object -First 1
-if (-not $repoDir) { Fail 'Архив игровых файлов оказался пустым.' }
-
-Copy-Item (Join-Path $repoDir.FullName 'gamedata') $Root -Recurse -Force
+Copy-Item $dataSrc $Root -Recurse -Force
 Copy-Item (Join-Path $repoDir.FullName 'config\fsgame.ltx') (Join-Path $Root 'fsgame.ltx') -Force
 
-# user.ltx ставим только если его ещё нет — чужие настройки не трогаем
+# --- 9. Убираем то, чего в новой сборке больше нет ------------------------------------------
+# Считаем только по манифесту: файл удаляется, если МЫ его ставили и теперь он исчез.
+# Всё, чего в манифесте не было, — чужое: другие моды, ручные правки. Не трогаем.
+if ($oldFiles.Count) {
+    $newSet = [System.Collections.Generic.HashSet[string]]::new(
+        [string[]]$newFiles, [System.StringComparer]::OrdinalIgnoreCase)
+
+    $removed = 0
+    foreach ($rel in $oldFiles) {
+        if ($newSet.Contains($rel)) { continue }
+        $path = Join-Path $Root $rel
+        if (Test-Path $path) {
+            try { Remove-Item $path -Force; $removed++ }
+            catch { Say "  ! не удалось убрать $rel" 'DarkYellow' }
+        }
+    }
+
+    if ($removed) {
+        Say "  Убрано устаревших файлов: $removed" 'DarkGray'
+
+        # пустые папки, оставшиеся после уборки
+        foreach ($dir in @('gamedata', 'bin')) {
+            $full = Join-Path $Root $dir
+            if (-not (Test-Path $full)) { continue }
+            Get-ChildItem $full -Recurse -Directory |
+                Sort-Object { $_.FullName.Length } -Descending |
+                Where-Object { -not (Get-ChildItem $_.FullName -Recurse -File | Select-Object -First 1) } |
+                ForEach-Object { Remove-Item $_.FullName -Force -Recurse -ErrorAction SilentlyContinue }
+        }
+    } else {
+        Say '  Устаревших файлов не было.' 'DarkGray'
+    }
+}
+
+# --- 10. Настройки и папки ------------------------------------------------------------------
 New-Item -ItemType Directory -Force (Join-Path $Root 'appdata') | Out-Null
 $userLtx = Join-Path $Root 'appdata\user.ltx'
 if (-not (Test-Path $userLtx)) {
@@ -132,7 +191,6 @@ foreach ($sub in @('logs', 'savedgames', 'shaders_cache_oxr')) {
     New-Item -ItemType Directory -Force (Join-Path $Root "appdata\$sub") | Out-Null
 }
 
-# ярлык запуска
 $launcher = Join-Path $Root 'Dead Air x64.cmd'
 @"
 @echo off
@@ -140,12 +198,14 @@ cd /d "%~dp0"
 start "" "%~dp0bin\xrEngine.exe" -r4 -force_flushlog
 "@ | Out-File -FilePath $launcher -Encoding oem -Force
 
-# --- 7. Отметка версии ---------------------------------------------------------------------
+# --- 11. Запоминаем, что поставили ----------------------------------------------------------
+$newFiles | Sort-Object -Unique | Out-File -FilePath $Manifest -Encoding utf8 -Force
 $latest | Out-File -FilePath $StampFile -Encoding utf8 -Force
 Remove-Item $Work -Recurse -Force -ErrorAction SilentlyContinue
 
 Say ''
 Say "  Готово. Установлена версия $latest." 'Green'
+Say "  Файлов в сборке: $($newFiles.Count)" 'DarkGray'
 Say '  Запуск — «Dead Air x64.cmd» в этой же папке.' 'Green'
 Say ''
 Read-Host 'Enter — выход'
