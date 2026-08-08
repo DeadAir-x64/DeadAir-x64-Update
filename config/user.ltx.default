@@ -222,7 +222,7 @@ hud_nearwall_dist_min 0.05
 hud_nearwall_speed 8.
 hud_nearwall_target_fov 0.35
 hud_weapon on
-keypress_on_start 0
+keypress_on_start 1
 lua_debug on
 lua_dump_depth 0
 lua_gc_method gc_step
@@ -509,7 +509,7 @@ r__wind_scale 1.
 r__wind_shadow 1
 r__xess ui_mm_xess_off
 r__zoom_dof 0.
-rs_always_active on
+rs_always_active off
 rs_c_brightness 1.2
 rs_c_contrast 1.
 rs_c_gamma 1.
@@ -537,12 +537,11 @@ slot_2 stimpack
 slot_3 geiger
 snd_acceleration on
 snd_cache_size 32
-snd_device ui_mm_snd_device_auto
 snd_efx on
 snd_targets 256
 snd_use_float32 on
 snd_volume_eff 1.
-snd_volume_music 0.2
+snd_volume_music 0.5
 start_time_single 1.1.1 12:0:0.0
 sv_activated_return 0
 sv_adm_menu_ban_time ?
@@ -608,7 +607,5 @@ time_factor_single 10.
 ui_style ui_style_default
 ui_time_factor 1.000000
 ui_widescreen_layout 1
-vid_mode 1920x1080 (260Hz)
-vid_monitor 0. P2510H PLUS
 vid_window_mode st_opt_fullscreen_borderless
 wpn_aim_toggle 0

@@ -287,6 +287,19 @@ if (-not (Test-Path $userLtx)) {
     Say '  Настройки выставлены по умолчанию.' 'DarkGray'
 } else {
     Say '  Ваши настройки сохранены как есть.' 'DarkGray'
+
+    # Разовый перенос: пауза с нажатием клавиши при входе на локацию.
+    #
+    # Сцена «нажмите любую клавишу» в моде есть давно, но выключателем keypress_on_start её держали
+    # в нуле. Теперь она включена. Файл настроек при обновлении не перезаписывается — иначе игрок
+    # терял бы всё остальное, — поэтому у тех, у кого сборка уже стоит, остался бы старый ноль.
+    # Правим ровно эту строку и ничего больше.
+    $ltxLines = Get-Content $userLtx
+    if ($ltxLines -match '^\s*keypress_on_start\s+0\s*$') {
+        ($ltxLines -replace '^\s*keypress_on_start\s+0\s*$', 'keypress_on_start 1') |
+            Set-Content $userLtx -Encoding oem
+        Say '  Включена пауза при входе на локацию.' 'DarkGray'
+    }
 }
 
 foreach ($sub in @('logs', 'savedgames', 'shaders_cache_oxr')) {
