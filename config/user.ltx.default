@@ -225,8 +225,8 @@ hud_weapon on
 keypress_on_start 1
 lua_debug on
 lua_dump_depth 0
-lua_gc_method gc_step
-lua_gc_timeout 1000
+lua_gc_method gc_adaptive
+lua_gc_timeout 4000
 lua_gcstep 30
 mm_mm_net_srv_dedicated off
 mm_net_con_publicserver off

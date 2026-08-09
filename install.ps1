@@ -300,6 +300,45 @@ if (-not (Test-Path $userLtx)) {
             Set-Content $userLtx -Encoding oem
         Say '  Включена пауза при входе на локацию.' 'DarkGray'
     }
+
+    # Разовый перенос: стратегия сборки мусора Lua.
+    #
+    # Прежний режим gc_step оставлял порог сборщика вплотную к текущему объёму, и сборка
+    # запускалась из выделений памяти внутри скриптов - прямо посреди обновления объекта. Отсюда
+    # рывки кадра по 12-16 миллисекунд. Режим gc_timeout делает ту же работу с бюджетом времени
+    # и только в одном месте кадра. На замерах рывки исчезают полностью.
+    #
+    # Значение попадает в файл настроек, а он при обновлении не перезаписывается, иначе игрок
+    # терял бы всё остальное. Поэтому правим ровно эту строку.
+    $ltxLines = Get-Content $userLtx
+    if ($ltxLines -match '^\s*lua_gc_method\s+(gc_step|gc_timeout)\s*$') {
+        ($ltxLines -replace '^\s*lua_gc_method\s+(gc_step|gc_timeout)\s*$', 'lua_gc_method gc_adaptive') |
+            Set-Content $userLtx -Encoding oem
+        Say '  Сборка мусора переведена в щадящий режим.' 'DarkGray'
+    }
+
+    # Бюджет сборки мусора: старое значение 1000 подобрано при неверных единицах в движке
+    # (счётчик отдавал тики, а бюджет считался в наносекундах — выходило в сто раз больше).
+    # После исправления единиц 1000 означает ровно 1 мс на кадр, и сборщик за мусором не
+    # успевает: куча Lua растёт. По замерам стоит 4000.
+    $ltxLines = Get-Content $userLtx
+    if ($ltxLines -match '^\s*lua_gc_timeout\s+1000\s*$') {
+        ($ltxLines -replace '^\s*lua_gc_timeout\s+1000\s*$', 'lua_gc_timeout 4000') |
+            Set-Content $userLtx -Encoding oem
+    }
+
+    # Размытие при перезарядке — выключить.
+    #
+    # Флаг g_weapon_dof включает три эффектора глубины резкости, и один из них навешивается
+    # прямо на перезарядку (Weapon.cpp, ветка eReload). В умолчательном файле настроек он и так
+    # ноль, но умолчания достаются только чистой установке — у тех, кто уже играл, остаётся
+    # своё значение. Правим ровно эту строку.
+    $ltxLines = Get-Content $userLtx
+    if ($ltxLines -match '^\s*g_weapon_dof\s+[1-9]') {
+        ($ltxLines -replace '^\s*g_weapon_dof\s+.*$', 'g_weapon_dof 0') |
+            Set-Content $userLtx -Encoding oem
+        Say '  Выключено размытие при перезарядке.' 'DarkGray'
+    }
 }
 
 foreach ($sub in @('logs', 'savedgames', 'shaders_cache_oxr')) {

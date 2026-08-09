@@ -24,7 +24,7 @@ if string.find(command_line(), "-dbg") then
 	end
 end
 
-USE_INI_MEMOIZE = true
+USE_INI_MEMOIZE = false
 
 -- Improves performance if true, by disabling update methods for squads and smart terrains on levels not linked in configs\ai_tweaks\simulation_objects.ltx
 -- But this means simulation will only be active on actor level and linked levels everything else will remain in an idle state
@@ -1812,12 +1812,17 @@ if (USE_INI_MEMOIZE) then
 				result = tonumber(result)
 			end
 			
+			-- [DA_PORT] Кэш конфигов НИКОГДА НЕ НАПОЛНЯЛСЯ: запись стояла под условием, что ключ в
+			-- кэше уже есть. Первой записи при этом взяться неоткуда, поэтому memoize был мёртв, и
+			-- каждое чтение шло в движок тремя вызовами (section_exist + line_exist + r_string),
+			-- вдобавок вхолостую склеивая строку-ключ - то есть обходился ДОРОЖЕ, чем без кэша.
+			--
+			-- Кэшируется только системный ini, он статичен; на случай нужды есть clear_ini_cache.
+			-- Отсутствующие значения не кэшируются вовсе (выход по def выше), поэтому разные
+			-- умолчания у разных вызывающих остаются в силе.
 			if (result ~= nil) then
 				if (ini_cache[ini]) then
-					local key = s.."&"..k
-					if (ini_cache[ini][key]) then
-						ini_cache[ini][key] = result
-					end
+					ini_cache[ini][s.."&"..k] = result
 				end
 			end
 		end
@@ -1850,11 +1855,10 @@ if (USE_INI_MEMOIZE) then
 		
 		local a,b,c = ini:r_line(s,k,"","")
 		
+		-- [DA_PORT] Та же мёртвая запись, что и в r_memoize выше: условие «ключ уже есть» не давало
+		-- кэшу наполниться ни разу.
 		if (ini_cache[ini]) then
-			local key = s.."&"..k
-			if (ini_cache[ini][key]) then
-				ini_cache[ini][key] = {a,b,c}
-			end
+			ini_cache[ini][s.."&"..k] = {a,b,c}
 		end
 		
 		return a,b,c
