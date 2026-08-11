@@ -173,9 +173,17 @@ function validate_bounty_hunt_task(actor, npc, p)
 		faction_lookup[p[i]] = true
 	end
 
-	for i=1,65534 do
-		local se_obj = sim:object(i)
-		if (se_obj and IsStalker(nil,se_obj:clsid()) and se_obj:alive() and sfind(se_obj:section_name(),"sim_default") and get_object_story_id(i) == nil) and (se_obj.group_id == nil or se_obj.group_id == 65535 or get_object_story_id(se_obj.group_id) == nil) then
+	-- [DA_PORT] ќбход по индексу живых объектов вместо перебора всех 65534 номеров.
+	-- —оставы сверены поимЄнно в игре: сталкеры 578 = 578, монстры 796 = 796, расхождений нет.
+	-- db.offline_objects наполн€ют se_stalker и se_monster при регистрации, поэтому индекс
+	-- покрывает оба класса. —торож на 65535 об€зателен: такой ключ в индексе есть.
+	-- ÷икл выходит по первому совпадению, поэтому полную цену платил ќ“–»÷ј“≈Ћ№Ќџ… случай Ч
+	-- он же и частый: задача не предлагаетс€, когда цели нет. «овЄтс€ из перечислени€ задач
+	-- квестодател€ (axr_task_manager, 8 мест), то есть на каждый диалог по разу на задачу.
+	-- ¬Ќ»ћјЌ»≈: номер цикла «ƒ≈—№ был номером объекта Ч в теле он заменЄн на se_obj.id.
+	for da_id in pairs(db.offline_objects) do
+		local se_obj = da_id ~= 65535 and sim:object(da_id)
+		if (se_obj and IsStalker(nil,se_obj:clsid()) and se_obj:alive() and sfind(se_obj:section_name(),"sim_default") and get_object_story_id(se_obj.id) == nil) and (se_obj.group_id == nil or se_obj.group_id == 65535 or get_object_story_id(se_obj.group_id) == nil) then
 			comm = alife_character_community(se_obj)
 			local linked = simulation_objects.is_on_the_linked_level(alife():actor(),se_obj)
 			if (faction_lookup[comm] == true) and (linked or not check_linked) then
@@ -541,6 +549,7 @@ end
 function is_enemy_same_group(actor,npc)
 	local st = db.storage[npc:id()]
 	local enemy = st and st.enemy_id and (db.storage[st.enemy_id] and db.storage[st.enemy_id].object or level.object_by_id(st.enemy_id))
+	if not enemy then return false end -- [DA_PORT] така€ же проверка стоит в шести соседних функци€х, здесь была забыта
 	if (not enemy:alive()) then
 		return false
 	end
@@ -3439,9 +3448,17 @@ function can_monster_hunt(actor,npc,p)
 		return false
 	end
 	
-	for i=1,65534 do
-		local se_obj = sim:object(i)
-		if se_obj and (se_obj:clsid() == boss_class) and (se_obj:alive()) and (get_object_story_id(i) == nil) then
+	-- [DA_PORT] ќбход по индексу живых объектов вместо перебора всех 65534 номеров.
+	-- —оставы сверены поимЄнно в игре: сталкеры 578 = 578, монстры 796 = 796, расхождений нет.
+	-- db.offline_objects наполн€ют se_stalker и se_monster при регистрации, поэтому индекс
+	-- покрывает оба класса. —торож на 65535 об€зателен: такой ключ в индексе есть.
+	-- ÷икл выходит по первому совпадению, поэтому полную цену платил ќ“–»÷ј“≈Ћ№Ќџ… случай Ч
+	-- он же и частый: задача не предлагаетс€, когда цели нет. «овЄтс€ из перечислени€ задач
+	-- квестодател€ (axr_task_manager, 8 мест), то есть на каждый диалог по разу на задачу.
+	-- ¬Ќ»ћјЌ»≈: номер цикла «ƒ≈—№ был номером объекта Ч в теле он заменЄн на se_obj.id.
+	for da_id in pairs(db.offline_objects) do
+		local se_obj = da_id ~= 65535 and sim:object(da_id)
+		if se_obj and (se_obj:clsid() == boss_class) and (se_obj:alive()) and (get_object_story_id(se_obj.id) == nil) then
 		
 			local level_name = sim:level_name(game_graph():vertex(se_obj.m_game_vertex_id):level_id())
 			local linked = (utils.levels_linked(level.name(),level_name)) or (level.name() == level_name)

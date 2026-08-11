@@ -167,9 +167,16 @@ function action_meet_wait:execute ()
 		elseif (self.a.stage == 1) then
 			state_mgr.set_state(npc,"rush")
 
+			-- DA: тут было ДВА пробела сразу. Первый: у одиночки отряда нет, get_object_squad
+			-- отдаёт пустоту, и squad:commander_id() роняло игру. Второй, старше: даже когда отряд
+			-- есть, командир мог уйти в офлайн — тогда level.object_by_id вернёт пустоту, и она
+			-- уходила АРГУМЕНТОМ в get_vertex, а тот сразу дёргает npc:direction() без проверки.
+			-- Поэтому проверяем commander перед вызовом, а не только перед разыменованием.
+			-- Заодно commander_id запрашивался дважды.
 			local squad = get_object_squad(npc)
-			local commander = squad:commander_id() and level.object_by_id(squad:commander_id())
-			self.a.vertex_id = get_vertex(commander) or npc:level_vertex_id()
+			local cid = squad and squad:commander_id()
+			local commander = cid and level.object_by_id(cid)
+			self.a.vertex_id = (commander and get_vertex(commander)) or npc:level_vertex_id()
 			self.a.vertex_id = utils.send_to_nearest_accessible_vertex(npc,self.a.vertex_id,"xr_meet")
 
 			self.a.dtimer = time_global() + 3000

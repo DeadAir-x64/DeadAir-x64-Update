@@ -280,9 +280,12 @@ function action_beh:set_desired_target()
 		t = self:get_current_waypoint()
 		self.st.behavior = "beh_path"
 	elseif (target == "commander") then
+		-- DA: у одиночки отряда нет, get_object_squad отдаёт пустоту.
+		-- Заодно commander_id запрашивался дважды.
 		local squad = get_object_squad(self.object)
-		if not(squad:commander_id() == self.object:id()) then
-			set_position_data(squad:commander_id())
+		local commander = squad and squad:commander_id()
+		if (commander and commander ~= self.object:id()) then
+			set_position_data(commander)
 		end
 	elseif (string.find(target,"lvid:")) then
 		local vid,pos

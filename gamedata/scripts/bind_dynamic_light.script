@@ -110,10 +110,14 @@ function switch_light_from_table(name)
 	if not (id and level.object_by_id(id)) then return end
 	
 	local obj = level.object_by_id(id)
-	if (obj:get_hanging_lamp():is_on()) then
-		obj:get_hanging_lamp():turn_off()
+	-- DA: get_hanging_lamp отдаёт пустоту, если объект не лампа;
+	-- запрашивался он при этом трижды подряд.
+	local lamp = obj:get_hanging_lamp()
+	if not (lamp) then return end
+	if (lamp:is_on()) then
+		lamp:turn_off()
 	else
-		obj:get_hanging_lamp():turn_on()
+		lamp:turn_on()
 	end
 	
 end

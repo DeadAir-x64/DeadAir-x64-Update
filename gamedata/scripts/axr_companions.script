@@ -312,8 +312,11 @@ function remove_all_from_actor_squad()		-->> Added from 1.4.22
 		local squad = sim and sim:object(id)
 		if (squad) then
 			for k in squad:squad_members() do 
+				-- DA: боец мог быть уже удалЄн Ч execute_script_on_squad сразу дЄргает obj:clsid()
 				local se_obj = k.object or alife():object(k.id)
-				alun_utils.execute_script_on_squad(se_obj,remove_from_actor_squad) 	-- A fix to companions stacking in Relations tab 
+				if (se_obj) then
+					alun_utils.execute_script_on_squad(se_obj,remove_from_actor_squad) 	-- A fix to companions stack showing in Relations tab
+				end
 			end
 		end
 		companion_squads[id] = nil

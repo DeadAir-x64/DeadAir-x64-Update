@@ -589,6 +589,11 @@ function actor_on_item_use(obj)
 			end
 			local compr = alife():create("compression_bag",db.actor:position(),0,0,0)
 				
+			-- [DA_PORT] Запоминаем номер развёрнутого спальника, чтобы не искать его перебором
+			-- всего мира при сворачивании компрессионным мешком (ниже по файлу). Мод уже так делает
+			-- для предметной версии: save_var(db.actor,"itm_sleepbag_id", ...).
+			utils.save_var(db.actor, "da_ph_sleepbag_id", se_obj.id)
+
 			level.map_add_object_spot_ser(se_obj.id, "ui_pda2_actor_sleep_location", game.translate_string("st_itm_sleepbag_name"))
 		else
 			local se_obj = alife():create(sec,db.actor:position(),0,0,0)
@@ -603,6 +608,26 @@ function actor_on_item_use(obj)
 	
 	-- Compression bag
 	if (obj:section() == "compression_bag") then
+		-- [DA_PORT] Сначала пробуем номер, запомненный при разворачивании, и только если он не
+		-- подошёл — прежний перебор. Перебор 1..65534 с level.object_by_id на каждом шаге стоит
+		-- около 18 мс (замер таких сканов profile_timer на стенде), а ищется объект в МЕТРЕ от
+		-- игрока. Откат оставлен намеренно: спальник мог быть развёрнут до этой правки или
+		-- уничтожен иначе, и тогда поведение обязано остаться прежним.
+		local da_handled = false
+		local known = utils.load_var(db.actor, "da_ph_sleepbag_id", nil)
+		local ko = known and level.object_by_id(known)
+		if (ko) and (ko:section() == "ph_sleepbag") and (ko:position():distance_to(db.actor:position()) < 1) then
+			level.map_remove_object_spot(known, "ui_pda2_actor_sleep_location")
+			alife():create("itm_sleepbag",db.actor:position(),0,0,0)
+			alife():release(alife_object(known))
+			alife():release(alife_object(obj:id()))
+			actor_effects.use_item("itm_sleepbag")
+			utils.save_var(db.actor, "da_ph_sleepbag_id", nil)
+			da_handled = true
+		end
+
+		-- поток исполнения не меняем: прежний код после цикла шёл дальше по функции
+		if not (da_handled) then
 		for i=1,65534 do
 			local s = alife_object(i)
 			if s then
@@ -619,6 +644,7 @@ function actor_on_item_use(obj)
 					end
 				end
 			end
+		end
 		end
 	end
 	

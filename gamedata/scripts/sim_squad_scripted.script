@@ -338,8 +338,21 @@ function sim_squad_scripted:generic_update()
 			if (axr_main.config:r_value("mm_options","enable_offline_battles",1,false) == true) 
 			and (se_target:clsid() == clsid.smart_terrain) then
 				for id,squad in pairs( SIMBOARD.smarts[se_target.id].squads) do
-					if (sim_squad_fighting.CheckFight(self,squad)) then
-						sim_squad_fighting.InitFight(self,squad)
+					-- [DA_PORT] Отряд берём ЗАНОВО по номеру, а не из списка.
+					--
+					-- В списке отрядов смарт-террейна остаются уже удалённые: вычёркивает их только
+					-- штатный путь (simulation_board:remove_squad), а отряд может уйти и мимо него.
+					-- Ссылка в списке тогда указывает на освобождённую память, и первое же обращение
+					-- к ней -- а CheckFight начинает с squad:name() -- валит игру с «исполнение по
+					-- адресу 0000000000000000». Машинного стека там нет: место назвал стек Lua,
+					-- который движок теперь печатает при отказе.
+					--
+					-- Ключ таблицы -- обычное число, оно живо всегда. По нему спрашиваем симуляцию:
+					-- вернёт объект -- он настоящий, вернёт nil -- отряда больше нет, и трогать
+					-- мёртвую ссылку незачем.
+					local live_squad = id and alife_object(id)
+					if (live_squad and sim_squad_fighting.CheckFight(self,live_squad)) then
+						sim_squad_fighting.InitFight(self,live_squad)
 						break
 					end
 				end
@@ -406,11 +419,7 @@ function sim_squad_scripted:generic_update()
 	end
 	
 	-- Find a new target
-	-- [DA_PORT] Было: get_squad_target(self) or get_squad_target(self,false,true).
-	-- Сигнатура одна - simulation_board:get_squad_target(squad), лишние аргументы движок
-	-- отбрасывает, поэтому запасной вызов делает ту же работу и возвращает тот же ответ.
-	-- Полный обход всех целей симуляции выполнялся дважды подряд впустую.
-	local target = SIMBOARD:get_squad_target(self)
+	local target = SIMBOARD:get_squad_target(self) or SIMBOARD:get_squad_target(self,false,true)
 	if not (target) then
 		--printf("squad %s has no target",self:name())
 		self:on_reach_target(self)
