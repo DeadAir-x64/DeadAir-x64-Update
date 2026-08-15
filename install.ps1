@@ -60,6 +60,23 @@ if (-not $Token) {
 $GhHeaders = @{ 'User-Agent' = 'DeadAir-x64-Updater' }
 if ($Token) { $GhHeaders['Authorization'] = "Bearer $Token" }
 
+# Негодный ключ НЕ должен мешать: репозиторий открытый, и без ключа всё качается.
+#
+# 16.08.2026 у тестеров истёк ключ, розданный вместе со сборкой, и установщик вставал намертво с
+# 401 — хотя всё, что ему нужно, доступно и без авторизации. Объяснять это текстом бесполезно:
+# человек уже упёрся в ошибку. Проверяем ключ одним дешёвым запросом и, если он не подошёл,
+# молча продолжаем без него.
+if ($Token) {
+    try {
+        $null = Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo" `
+            -Headers $GhHeaders -TimeoutSec 20
+    } catch {
+        $GhHeaders.Remove('Authorization') | Out-Null
+        $Token = ''
+        Say '  Ключ доступа не подошёл — продолжаю без него (сборка открытая).' 'DarkGray'
+    }
+}
+
 $Root      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Work      = Join-Path $env:TEMP 'da_x64_update'
 $StampFile = Join-Path $Root 'appdata\da_x64_version.txt'
