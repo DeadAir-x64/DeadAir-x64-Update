@@ -54,21 +54,32 @@ function generic_physics_binder:update(delta)
 		xr_logic.issue_event(self.object, self.st[self.st.active_scheme], "update", delta)
 	end
 	
-	-- [DA_PORT] Обработчики вешаются один раз, а не каждое обновление.
+	-- [DA_PORT] Обработчики вешаются на смене секции, а не каждое обновление.
 	--
-	-- Три set_callback стояли в теле update, то есть переустанавливались каждый раз. Значения
-	-- при этом те же самые - те же функции и тот же self, - и снять их отсюда некому: ни
-	-- clear_callbacks, ни установки другого обработчика на эти события в моде нет.
+	-- Три set_callback стояли в теле update, то есть переустанавливались каждый раз. Каждая
+	-- установка внутри движка уничтожает и заводит заново две ссылки в реестре Lua
+	-- (CScriptCallbackEx::set -> clear -> пересоздание, script_callback_ex.h), а объектов со
+	-- схемами на уровне сотни.
 	--
-	-- Каждая установка внутри движка уничтожает и заводит заново две ссылки в реестре Lua
-	-- (CScriptCallbackEx::set -> clear -> пересоздание, script_callback_ex.h). Это давало
-	-- заметный вклад в выбросы кадра: замер da_object_dump на лампах показал 23 объекта по
-	-- 8-12 мс в одном кадре.
-	if not (self.da_cb_once) then
+	-- ОСТОРОЖНО: вешать их РОВНО ОДИН РАЗ нельзя, и это уже стоило дефекта «дверь открывается
+	-- один раз, дальше не реагирует». Снимает обработчик modules.script:241 - на КАЖДОМ
+	-- переключении секции у объектов типа stype_item:
+	--     elseif st.stype == modules.stype_item then
+	--         npc:set_callback(callback.use_object, nil)
+	-- Заводская установка каждый кадр это скрывала: обработчик возвращался следующим же
+	-- обновлением. Поэтому условие завязано на смену active_section - ровно на то событие,
+	-- которое обработчик и снимает.
+	--
+	-- Ловушка, из-за которой дефект и появился: modules.script лежит В АРХИВЕ configs.xdb0, и
+	-- поиск по каталогу gamedata\scripts его не видит. Прежний комментарий утверждал «снять их
+	-- отсюда некому» - утверждение было получено таким поиском и было ложным. Мод искать только
+	-- по распакованному дереву (D:\Dead Air\extracted).
+	if not (self.da_cb_once) or (self.da_cb_section ~= self.st.active_section) then
+		self.da_cb_once = true
+		self.da_cb_section = self.st.active_section
 		self.object:set_callback(callback.hit, generic_physics_binder.hit_callback, self)
 		self.object:set_callback(callback.death, generic_physics_binder.death_callback, self)
 		self.object:set_callback(callback.use_object, generic_physics_binder.use_callback, self)
-		self.da_cb_once = true
 	end
 	
 	xr_sound.update(self.object:id())
@@ -127,9 +138,51 @@ function generic_physics_binder:load(reader)
 	set_save_marker(reader, "load", true, "physics_binder")
 end
 
+-- [DA_PORT] Прибор: почему дверь не отзывается на F.
+--
+-- Включается той же ручкой, что и разбор выбора объекта в движке: da_use_log 1. Разделение
+-- обязательное: движок доказал, что дверь ВЫБРАНА при каждом нажатии, а дальше начинается
+-- скриптовая схема, про которую он ничего не знает. Здесь единственная точка, где видно и
+-- нажатие, и состояние схемы одновременно.
+--
+-- Строка "ДО" отсутствует - нажатие до скрипта не дошло, виноват движок.
+-- секция=nil          - схема умерла, отсюда "после одного раза больше не открывается".
+-- обработчиков=0      - схема жива, но на события никто не подписан.
+-- секция ДО == ПОСЛЕ  - переключение не состоялось, смотреть on_use в логике двери.
+local function da_use_log_on()
+	local ok, v = pcall(function() return get_console():get_integer("da_use_log") end)
+	return ok and v == 1
+end
+
+local function da_door_state(st)
+	if not (st) then
+		return "хранилища нет"
+	end
+	local scheme = st.active_scheme
+	local sch = scheme and st[scheme]
+	local acts = 0
+	if sch and sch.actions then
+		for _, on in pairs(sch.actions) do
+			if on then
+				acts = acts + 1
+			end
+		end
+	end
+	return string.format("секция=%s схема=%s обработчиков=%d on_use=%s",
+		tostring(st.active_section), tostring(scheme), acts,
+		sch and tostring(sch.on_use ~= nil) or "хранилища схемы нет")
+end
+
 function generic_physics_binder:use_callback(obj, who)
+	local log = da_use_log_on()
+	if log then
+		printf("[DA_DOOR] %s ДО: %s", self.object:name(), da_door_state(self.st))
+	end
 	if self.st.active_section then
 		xr_logic.issue_event(self.object, self.st[self.st.active_scheme], "use_callback", obj, who)
+	end
+	if log then
+		printf("[DA_DOOR] %s ПОСЛЕ: %s", self.object:name(), da_door_state(self.st))
 	end
 	-- Alundaio
 	SendScriptCallback("physic_object_on_use_callback",self.object,who)

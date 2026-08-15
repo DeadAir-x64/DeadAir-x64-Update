@@ -160,21 +160,26 @@ local tg = 0
 function generic_light_binder:update(delta)
 	
 	---[[
-	-- [DA_PORT] Обработчики вешаются один раз, а не каждое обновление.
+	-- [DA_PORT] Обработчики вешаются на смене секции, а не каждое обновление.
 	--
-	-- Три set_callback стояли в теле update, то есть переустанавливались каждый раз. Значения
-	-- при этом те же самые - те же функции и тот же self, - и снять их отсюда некому: ни
-	-- clear_callbacks, ни установки другого обработчика на эти события в моде нет.
+	-- Три set_callback стояли в теле update, то есть переустанавливались каждый раз. Каждая
+	-- установка внутри движка уничтожает и заводит заново две ссылки в реестре Lua
+	-- (CScriptCallbackEx::set -> clear -> пересоздание, script_callback_ex.h). Замер
+	-- da_object_dump именно на лампах показал 23 объекта по 8-12 мс в одном кадре.
 	--
-	-- Каждая установка внутри движка уничтожает и заводит заново две ссылки в реестре Lua
-	-- (CScriptCallbackEx::set -> clear -> пересоздание, script_callback_ex.h). Это давало
-	-- заметный вклад в выбросы кадра: замер da_object_dump на лампах показал 23 объекта по
-	-- 8-12 мс в одном кадре.
-	if not (self.da_cb_once) then
+	-- ОСТОРОЖНО: вешать их РОВНО ОДИН РАЗ нельзя. Обработчик снимает modules.script:241 на
+	-- каждом переключении секции у объектов типа stype_item, и на физических объектах это уже
+	-- дало дефект «дверь открывается один раз». Здесь схемы через initialize_obj не заводятся,
+	-- то есть путь снятия не пройден - но полагаться на это нельзя, схему лампе могут дать
+	-- позже. Условие то же самое, что у физических объектов, и стоит ровно столько же.
+	local da_st = db.storage[self.object:id()]
+	local da_section = da_st and da_st.active_section
+	if not (self.da_cb_once) or (self.da_cb_section ~= da_section) then
+		self.da_cb_once = true
+		self.da_cb_section = da_section
 		self.object:set_callback(callback.hit, generic_light_binder.hit_callback, self)
 		self.object:set_callback(callback.death, generic_light_binder.death_callback, self)
 		self.object:set_callback(callback.use_object, generic_light_binder.use_callback, self)
-		self.da_cb_once = true
 	end
 	
 	
