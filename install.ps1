@@ -234,6 +234,39 @@ Get-ChildItem $dataSrc -Recurse -File | ForEach-Object {
     $newFiles.Add('gamedata\' + $_.FullName.Substring($dataSrc.Length).TrimStart('\'))
 }
 
+# --- 8а. Какие шейдеры на самом деле меняются -----------------------------------------------
+#
+# Считать ОБЯЗАТЕЛЬНО до копирования: после него новый файл лежит поверх старого, и разницы уже
+# не видно. Нужна она для чистки кэша ниже — см. шаг 9а.
+#
+# 🪤 Первая версия сравнивала не с установленным, а просто брала все шейдеры обновления, и на
+# проверке вхолостую снесла бы 207 каталогов кэша из 602 файлов отгрузки: в ней лежит ВЕСЬ набор
+# шейдеров, а не только правленые. Комментарий при этом обещал «пересоберутся единицы».
+#
+# Сравнение побайтовое, а не через Get-FileHash: тот появился в PowerShell 4.0, а установщик
+# держит 3.0. Файлы шейдеров маленькие, читать их целиком дёшево.
+$shaderSrc = Join-Path $dataSrc 'shaders'
+$changedShaders = New-Object 'System.Collections.Generic.List[string]'
+if (Test-Path $shaderSrc) {
+    $prefix = $shaderSrc.Length
+    Get-ChildItem $shaderSrc -Recurse -File | ForEach-Object {
+        $rel = $_.FullName.Substring($prefix).TrimStart('\')
+        $old = Join-Path $Root ('gamedata\shaders\' + $rel)
+        $differs = $true
+        if (Test-Path $old) {
+            # ⚠️ Сравнивать СЫРЫЕ байты нельзя, и это уже выученный урок: отгрузка приезжает
+            # архивом репозитория (LF), а на диске файл может лежать с CRLF. Побайтово разошлись
+            # бы все текстовые файлы разом, и кэш сносился бы целиком при каждом обновлении.
+            # На результат компиляции шейдера перевод строки не влияет — приводим оба к одному
+            # виду, ровно как это делает _same_content в проверке полноты отгрузки.
+            $a = [System.IO.File]::ReadAllText($_.FullName).Replace("`r`n", "`n")
+            $b = [System.IO.File]::ReadAllText($old).Replace("`r`n", "`n")
+            $differs = ($a -cne $b)
+        }
+        if ($differs) { $changedShaders.Add($_.Name) | Out-Null }
+    }
+}
+
 # --- 9. Раскладываем -----------------------------------------------------------------------
 Say '  Ставлю файлы...'
 $binDst = Join-Path $Root 'bin'
@@ -241,6 +274,28 @@ New-Item -ItemType Directory -Force $binDst | Out-Null
 Copy-Item "$binSrc\*" $binDst -Recurse -Force
 Copy-Item $dataSrc $Root -Recurse -Force
 Copy-Item (Join-Path $repoDir.FullName 'config\fsgame.ltx') (Join-Path $Root 'fsgame.ltx') -Force
+
+# --- 9а. Сносим кэш ровно тех шейдеров, которые изменились ------------------------------------
+#
+# ⛔ Мало заменить исходник шейдера. Движок компилирует его один раз и складывает двоичный
+# результат в appdata\shaders_cache_oxr\<рендер>\<имя файла>\<набор настроек>, а при запуске
+# берёт готовое, не сверяясь с исходником. У того, кто уже играл, правка молча не применяется:
+# ни ошибки, ни строки в логе — просто прежнее поведение.
+#
+# Список посчитан ДО копирования (шаг 8а), поэтому здесь сносится ровно изменившееся: на чистой
+# установке кэша ещё нет, на обновлении пересоберутся единицы.
+$cacheRoot = Join-Path $Root 'appdata\shaders_cache_oxr'
+if ($changedShaders.Count -and (Test-Path $cacheRoot)) {
+    $dropped = 0
+    foreach ($name in ($changedShaders | Sort-Object -Unique)) {
+        Get-ChildItem $cacheRoot -Recurse -Directory -Filter $name -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                $dropped++
+            }
+    }
+    if ($dropped) { Say "  Сброшен кэш изменённых шейдеров: $dropped." 'DarkGray' }
+}
 
 # --- 10. Убираем то, чего в новой сборке больше нет ------------------------------------------
 # Считаем только по манифесту: файл удаляется, если МЫ его ставили и теперь он исчез.
@@ -338,6 +393,22 @@ if (-not (Test-Path $userLtx)) {
         ($ltxLines -replace '^\s*g_weapon_dof\s+.*$', 'g_weapon_dof 0') |
             Set-Content $userLtx -Encoding oem
         Say '  Выключено размытие при перезарядке.' 'DarkGray'
+    }
+
+    # Вторая половина того же размытия — погодная глубина резкости.
+    #
+    # g_weapon_dof выключает эффектор оружия, но экран размывает ещё и погода: level_weathers
+    # каждый тик гонит r2_dof_far/r2_dof_kernel с фокусом около полутора метров, а оружие при
+    # перезарядке ровно там. Гасится это флагом r2_dof_enable.
+    #
+    # ⛔ Файлы наборов качества (rspec_*.ltx) его уже гасят, но они применяются ТОЛЬКО при смене
+    # качества в меню. У того, кто уже играл, в user.ltx остаётся своё прежнее значение, и до
+    # него правка не доходит вовсе. Правим ту же строку, тем же приёмом.
+    $ltxLines = Get-Content $userLtx
+    if ($ltxLines -match '^\s*r2_dof_enable\s+on') {
+        ($ltxLines -replace '^\s*r2_dof_enable\s+.*$', 'r2_dof_enable off') |
+            Set-Content $userLtx -Encoding oem
+        Say '  Выключена погодная глубина резкости.' 'DarkGray'
     }
 }
 
