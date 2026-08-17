@@ -38,6 +38,16 @@ if ($PSVersionTable.PSVersion.Major -lt 3) {
     exit 1
 }
 
+# --- ВЫВОД --------------------------------------------------------------------------------
+# Определения стоят ЗДЕСЬ, а не ниже, и это не вкусовщина. PowerShell выполняет файл сверху вниз,
+# и функция существует только после того, как строка с её определением выполнена. Пока они лежали
+# ниже блока ключа доступа, обработчик негодного ключа звал Say, которого ещё не было: вместо
+# «продолжаю без ключа» человек получал CommandNotFoundException, а поскольку внешнего try нет и
+# $ErrorActionPreference = 'Stop', установка обрывалась насмерть. То есть спасательная ветка,
+# написанная РАДИ тех, у кого остался протухший da_token.txt, ломала установку именно у них.
+function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
+function Fail($text) { Say ''; Say "ОШИБКА: $text" 'Red'; Say ''; Read-Host 'Enter — выход'; exit 1 }
+
 # --- КУДА СМОТРЕТЬ ------------------------------------------------------------------------
 $Owner  = 'DeadAir-x64'
 $Repo   = 'DeadAir-x64-Update'
@@ -81,9 +91,6 @@ $Root      = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Work      = Join-Path $env:TEMP 'da_x64_update'
 $StampFile = Join-Path $Root 'appdata\da_x64_version.txt'
 $Manifest  = Join-Path $Root 'appdata\da_x64_files.txt'
-
-function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
-function Fail($text) { Say ''; Say "ОШИБКА: $text" 'Red'; Say ''; Read-Host 'Enter — выход'; exit 1 }
 
 Say ''
 Say '  Dead Air x64 — установка и обновление' 'Cyan'

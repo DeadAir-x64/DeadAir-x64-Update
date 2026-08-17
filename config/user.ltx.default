@@ -160,7 +160,7 @@ cl_mpdemosave 0
 con_sensitive 0.15
 da_fp_body 1
 da_legs_cam 1
-da_legs_fwd -0.3
+da_legs_fwd -0.35
 da_legs_hide 0
 da_legs_pitch_fwd -0.1
 da_legs_pitch_y -0.05
