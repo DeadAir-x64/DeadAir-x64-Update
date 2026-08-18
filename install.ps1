@@ -314,12 +314,14 @@ function Get-File($url, $dest, $expectSize, $headers) {
             try {
                 $buf = New-Object byte[] 262144
                 $doneBytes = [int64]$have
-                $tick = 0
+                # Считаем ВРЕМЯ, а не куски: раз в N кусков полоса на медленном канале молчит
+                # минутами, и человек решает, что всё повисло. Первую строку рисуем сразу.
+                $lastDraw = (Get-Date).AddSeconds(-10)
                 while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
                     $out.Write($buf, 0, $n)
                     $doneBytes += $n
-                    $tick++
-                    if ($tick % 20 -eq 0) {
+                    if (((Get-Date) - $lastDraw).TotalMilliseconds -ge 400) {
+                        $lastDraw = Get-Date
                         $sec = ((Get-Date) - $started).TotalSeconds
                         $speed = if ($sec -gt 0) { ($doneBytes - $fromStart) / $sec } else { 0 }
                         $line = if ($expectSize -gt 0) {
