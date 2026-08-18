@@ -278,6 +278,19 @@ function is_jammed()
 		return false
 	end
 
+	-- [DA_PORT] Глушение выключается в настройках игры: вкладка «Игра», пункт da_nvg_jam.
+	--
+	-- По умолчанию ВКЛЮЧЕНО — так задумано модом, и молча менять его замысел мы не вправе.
+	-- Сообщество лечит те же две локации отдельным аддоном (ferr-um, Dead Air Revolution,
+	-- «Отключение сломанного ПНВ в Рыжем лесу и Генераторах») — у нас это переключатель.
+	--
+	-- Проверка на axr_main.config обязательна: этот файл грузится раньше него, и без неё
+	-- ранний вызов уронит скрипт вместо того, чтобы просто ответить «глушим».
+	if (axr_main and axr_main.config
+	    and axr_main.config:r_value("mm_options", "enable_da_nvg_jam", 1, true) == false) then
+		return false
+	end
+
 	local jammed_levels =
 	{
 		["l10_red_forest"] = true,
