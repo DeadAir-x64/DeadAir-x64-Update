@@ -24,6 +24,9 @@ try {
         [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 } catch { }
 
+# Своя полоса прогресса рисуется ниже, встроенная только мешает.
+$ProgressPreference = 'SilentlyContinue'
+
 # Windows 7 из коробки идёт с PowerShell 2.0, где нет ни Invoke-WebRequest, ни распаковки.
 # Проверяем сразу: лучше понятное сообщение в начале, чем непонятная ошибка в середине.
 if ($PSVersionTable.PSVersion.Major -lt 3) {
@@ -46,6 +49,19 @@ if ($PSVersionTable.PSVersion.Major -lt 3) {
 # $ErrorActionPreference = 'Stop', установка обрывалась насмерть. То есть спасательная ветка,
 # написанная РАДИ тех, у кого остался протухший da_token.txt, ломала установку именно у них.
 function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
+function Size($bytes) {
+    if ($bytes -ge 1073741824) { '{0:n2} ГБ' -f ($bytes / 1073741824) }
+    else                       { '{0:n0} МБ' -f ($bytes / 1048576) }
+}
+function Speed($bps) {
+    if ($bps -ge 1048576) { '{0:n1} МБ/с' -f ($bps / 1048576) }
+    else                  { '{0:n0} КБ/с' -f ($bps / 1024) }
+}
+function Left($sec) {
+    if ($sec -ge 3600) { '{0:n0} ч {1:n0} мин' -f [math]::Floor($sec/3600), (($sec % 3600)/60) }
+    elseif ($sec -ge 60) { '{0:n0} мин' -f [math]::Ceiling($sec/60) }
+    else { '{0:n0} сек' -f $sec }
+}
 function Fail($text) { Say ''; Say "ОШИБКА: $text" 'Red'; Say ''; Read-Host 'Enter — выход'; exit 1 }
 
 # --- КУДА СМОТРЕТЬ ------------------------------------------------------------------------
@@ -181,6 +197,54 @@ $hint
 $latest = $rel.tag_name
 if (-not $latest) { Fail 'В репозитории пока нет ни одного выпуска.' }
 
+# --- ОБНОВЛЕНИЕ САМОГО УСТАНОВЩИКА ----------------------------------------------------------
+#
+# ⛔ Установщик раскладывает bin и gamedata — себя он не обновлял НИКОГДА. У человека,
+# поставившего сборку однажды, install.ps1 оставался тем же навсегда: все последующие правки
+# самого установщика — докачка, полоса прогресса, внятные ошибки — до него не доезжали.
+#
+# Проверяем ДО выхода по «версия та же»: иначе те, кто уже на свежей сборке, не получили бы
+# новый установщик вовсе — а это как раз те, кто обновляется регулярно.
+#
+# Берём файлы напрямую из репозитория, а не из архива с игровыми файлами: архив весит десятки
+# мегабайт и качается только когда есть что ставить, а тут нужно 35 КБ и каждый запуск.
+function Update-Self {
+    $names = @('install.ps1', 'Обновление.cmd', 'Установить Dead Air x64.cmd')
+    $done = 0
+    foreach ($name in $names) {
+        $url = "https://raw.githubusercontent.com/$Owner/$Repo/$Branch/" + [Uri]::EscapeDataString($name)
+        try {
+            $wc = New-Object Net.WebClient
+            $wc.Headers['User-Agent'] = 'DeadAir-x64-Updater'
+            $fresh = $wc.DownloadData($url)
+        } catch { continue }   # нет связи или файла — не повод срывать установку
+        if (-not $fresh -or $fresh.Length -lt 100) { continue }
+
+        $dst = Join-Path $Root $name
+        $differs = $true
+        if (Test-Path $dst) {
+            $have = [IO.File]::ReadAllBytes($dst)
+            $differs = ($have.Length -ne $fresh.Length)
+            if (-not $differs) {
+                for ($i = 0; $i -lt $fresh.Length; $i++) { if ($have[$i] -ne $fresh[$i]) { $differs = $true; break } }
+            }
+        }
+        if ($differs) {
+            # Пишем во временный файл и подменяем: оборвись запись на середине, у человека
+            # останется рабочий старый установщик, а не половина нового.
+            try {
+                $tmp = "$dst.new"
+                [IO.File]::WriteAllBytes($tmp, $fresh)
+                Move-Item $tmp $dst -Force
+                $done++
+            } catch { }
+        }
+    }
+    if ($done -gt 0) { Say '  Обновил сам установщик — со следующего запуска будет новее.' 'DarkGray' }
+}
+
+Update-Self
+
 if ($installed -eq $latest) {
     Say ''
     Say "  У вас уже актуальная версия ($latest). Обновлять нечего." 'Green'
@@ -195,6 +259,99 @@ Say ''
 $asset = $rel.assets | Where-Object { $_.name -like 'bin*.zip' } | Select-Object -First 1
 if (-not $asset) { Fail "В выпуске $latest нет файла bin*.zip — сообщите об этом автору сборки." }
 
+# --- ЗАГРУЗКА ФАЙЛА -------------------------------------------------------------------------
+# Своя загрузка вместо Invoke-WebRequest -OutFile, и вот почему.
+#
+# Первое: молчание. Invoke-WebRequest ничего не показывает, пока файл не доедет целиком.
+# На медленном канале это выглядит как зависший установщик — замерено на живой сети,
+# 79 МБ ехали одиннадцать минут при 70 КБ/с. Человек в такой тишине закрывает окно
+# и идёт жаловаться, хотя всё работало. Показываем сколько скачано, с какой скоростью
+# и сколько осталось ждать.
+#
+# Второе: обрыв. Invoke-WebRequest при разрыве связи теряет всё скачанное. Здесь
+# запрашивается диапазон от уже полученного байта, и поток дописывается в конец файла:
+# разорванное соединение стоит нам того, что не успело доехать, а не всей загрузки.
+function Get-File($url, $dest, $expectSize, $headers) {
+    $attempt = 0
+    while ($true) {
+        $have = 0
+        if (Test-Path $dest) { $have = (Get-Item $dest).Length }
+        if ($expectSize -gt 0 -and $have -ge $expectSize) { return }
+
+        $attempt++
+        if ($attempt -gt 20) { throw 'связь обрывается снова и снова' }
+        if ($have -gt 0 -and $attempt -eq 1) { Say "    продолжаю с $(Size $have) - заново качать не нужно" 'DarkGray' }
+
+        try {
+            $req = [Net.HttpWebRequest]::Create($url)
+            $req.UserAgent = 'DeadAir-x64'
+            $req.Timeout = 60000
+            $req.ReadWriteTimeout = 60000
+            # User-Agent, Accept и им подобные .NET считает ограниченными: присвоение через
+            # коллекцию Headers бросает исключение. Ставим их свойствами, остальное — в коллекцию.
+            if ($headers) { foreach ($k in $headers.Keys) {
+                switch ($k) {
+                    'User-Agent' { $req.UserAgent = $headers[$k] }
+                    'Accept'     { $req.Accept    = $headers[$k] }
+                    default      { $req.Headers[$k] = $headers[$k] }
+                }
+            } }
+            # Докачка возможна только когда известен ожидаемый размер: у архива с игровыми
+            # файлами GitHub собирает его на лету и размер не сообщает, там качаем с нуля.
+            if ($have -gt 0 -and $expectSize -gt 0) { $req.AddRange([int64]$have) }
+
+            $resp = $req.GetResponse()
+            # Сервер вправе не понять запрос диапазона и прислать файл целиком. Тогда начинаем
+            # заново: иначе получим склейку из двух кусков, которая пройдёт по размеру и окажется
+            # битым архивом, а причина будет неочевидной.
+            if ($have -gt 0 -and [int]$resp.StatusCode -ne 206) { $have = 0 }
+
+            $fmode = if ($have -gt 0) { [IO.FileMode]::Append } else { [IO.FileMode]::Create }
+            $in  = $resp.GetResponseStream()
+            $out = New-Object IO.FileStream($dest, $fmode, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            $started = Get-Date
+            $fromStart = [int64]$have
+            try {
+                $buf = New-Object byte[] 262144
+                $doneBytes = [int64]$have
+                $tick = 0
+                while (($n = $in.Read($buf, 0, $buf.Length)) -gt 0) {
+                    $out.Write($buf, 0, $n)
+                    $doneBytes += $n
+                    $tick++
+                    if ($tick % 20 -eq 0) {
+                        $sec = ((Get-Date) - $started).TotalSeconds
+                        $speed = if ($sec -gt 0) { ($doneBytes - $fromStart) / $sec } else { 0 }
+                        $line = if ($expectSize -gt 0) {
+                            $left = if ($speed -gt 0) { [int](($expectSize - $doneBytes) / $speed) } else { 0 }
+                            '    {0,3:n0}%  {1} из {2}   {3}   осталось ~{4}' -f `
+                                (($doneBytes * 100) / $expectSize), (Size $doneBytes), (Size $expectSize), (Speed $speed), (Left $left)
+                        } else {
+                            '    {0}   {1}' -f (Size $doneBytes), (Speed $speed)
+                        }
+                        Write-Host ("`r" + $line.PadRight(66)) -NoNewline
+                    }
+                }
+            } finally { $out.Close(); $in.Close(); $resp.Close() }
+            Write-Host ("`r" + ('    готово: ' + (Size (Get-Item $dest).Length)).PadRight(66))
+            return
+        } catch {
+            $now = 0
+            if (Test-Path $dest) { $now = (Get-Item $dest).Length }
+            if ($expectSize -gt 0 -and $now -ge $expectSize) { return }
+
+            # Повторять имеет смысл ТОЛЬКО сетевую ошибку. Всё остальное — ошибка в самом
+            # установщике, и двадцать повторов по три секунды лишь спрячут её за ложным
+            # «связь оборвалась»: человек полезет чинить интернет, которым всё в порядке.
+            if ($_.Exception -isnot [Net.WebException]) { throw }
+
+            Say ''
+            Say "    связь оборвалась на $(Size $now) - продолжаю (попытка $attempt)" 'DarkYellow'
+            Start-Sleep -Seconds 3
+        }
+    }
+}
+
 # --- 5. Качаем -----------------------------------------------------------------------------
 if (Test-Path $Work) { Remove-Item $Work -Recurse -Force }
 New-Item -ItemType Directory -Force $Work | Out-Null
@@ -208,10 +365,10 @@ Say "  Качаю модули движка ($([math]::Round($asset.size/1MB)) �
 $assetHeaders = $GhHeaders.Clone()
 $assetHeaders['Accept'] = 'application/octet-stream'
 $assetUrl = "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($asset.id)"
-Invoke-WebRequest -Uri $assetUrl -Headers $assetHeaders -OutFile $binZip -UseBasicParsing
+Get-File $assetUrl $binZip $asset.size $assetHeaders
 
 Say '  Качаю игровые файлы...'
-Invoke-WebRequest -Uri "https://api.github.com/repos/$Owner/$Repo/zipball/$Branch" -Headers $GhHeaders -OutFile $dataZip -UseBasicParsing
+Get-File "https://api.github.com/repos/$Owner/$Repo/zipball/$Branch" $dataZip 0 $GhHeaders
 
 # --- 6. Бэкап оригинала (только при первой установке) --------------------------------------
 if (-not $installed) {
