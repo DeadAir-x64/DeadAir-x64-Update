@@ -76,7 +76,9 @@ function da_tune_ui:InitControls()
 			xml:InitStatic(path.."cap_"..(i-1), wnd)
 			local bar = xml:InitTrackBar(path.."track_"..(i-1), wnd)
 			local lbl = xml:InitStatic(path.."val_"..(i-1), wnd)
-			table.insert(self.rows, { cmd = cmd, fmt = p.fmt[i], bar = bar, label = lbl, int = p.int })
+			-- [DA_PORT] page нужен кнопке «Вернуть стандартные»: сброс идёт по ТЕКУЩЕЙ вкладке.
+			table.insert(self.rows, { cmd = cmd, fmt = p.fmt[i], bar = bar, label = lbl, int = p.int,
+			                          page = p.id })
 		end
 	end
 
@@ -171,10 +173,34 @@ end
 -- сами за ней не следят. Заодно обновляем last, иначе Update увидит расхождение и тут же вернёт
 -- старое значение обратно в команду.
 function da_tune_ui:OnDefaults()
-	get_console():execute("da_tune_defaults")
+	-- [DA_PORT] Сбрасываем ТОЛЬКО текущую вкладку.
+	--
+	-- Раньше кнопка возвращала всё разом: правишь прицел — заодно улетает цветокоррекция,
+	-- подобранная в прошлый заход. Это отмена чужой работы, а не помощь.
+	--
+	-- Числа по-прежнему живут в движке: отсюда уходят только ИМЕНА величин текущей
+	-- страницы, а значения подставляет da_tune_defaults — разойтись им не с чем.
+	local page = self.tab:GetActiveId()
+	local names = {}
 	for _,r in ipairs(self.rows) do
-		r.bar:SetCurrentValue()
-		r.last = bar_value(r)
+		if (r.page == page) then
+			table.insert(names, r.cmd)
+		end
+	end
+
+	if (#names == 0) then
+		return
+	end
+
+	get_console():execute("da_tune_defaults " .. table.concat(names, " "))
+
+	-- Пересобираем ползунки только этой же вкладки: чужие трогать незачем, а их last
+	-- должен остаться прежним, иначе Update решит, что значение изменилось.
+	for _,r in ipairs(self.rows) do
+		if (r.page == page) then
+			r.bar:SetCurrentValue()
+			r.last = bar_value(r)
+		end
 	end
 end
 
