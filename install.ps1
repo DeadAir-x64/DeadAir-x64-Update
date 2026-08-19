@@ -48,7 +48,6 @@ if ($PSVersionTable.PSVersion.Major -lt 3) {
 # «продолжаю без ключа» человек получал CommandNotFoundException, а поскольку внешнего try нет и
 # $ErrorActionPreference = 'Stop', установка обрывалась насмерть. То есть спасательная ветка,
 # написанная РАДИ тех, у кого остался протухший da_token.txt, ломала установку именно у них.
-$Utf8NoBomVeg = New-Object Text.UTF8Encoding($false)
 function Say($text, $color = 'Gray') { Write-Host $text -ForegroundColor $color }
 function Size($bytes) {
     if ($bytes -ge 1073741824) { '{0:n2} ГБ' -f ($bytes / 1073741824) }
@@ -481,70 +480,6 @@ if ($changedShaders.Count -and (Test-Path $cacheRoot)) {
     if ($dropped) { Say "  Сброшен кэш изменённых шейдеров: $dropped." 'DarkGray' }
 }
 
-
-# --- 9в. Растительность ----------------------------------------------------------------------
-#
-# Деревья Absolute Nature 4 (Cromm Cruac) и наша кора: 207 файлов, 137 МБ на диске, 45 МБ загрузки.
-#
-# ПОЧЕМУ ОТДЕЛЬНЫМ ВЛОЖЕНИЕМ, а не в игровых файлах. Игровые файлы приезжают архивом репозитория
-# ЦЕЛИКОМ при каждом обновлении - сейчас это 40 МБ. Положить растительность туда значило бы
-# учетверить вес КАЖДОГО будущего патча, навсегда и для всех. Вложением она скачивается один раз
-# и потом молчит, пока её не сменят.
-#
-# ПОЧЕМУ ВСЕМ, а не в наборе HD-текстур. 45 МБ против 2.7 ГБ, а видно её в каждом кадре под
-# открытым небом: это лучшая отдача на мегабайт из всего, что мы раздаём. Прятать её за самой
-# тяжёлой загрузкой было бы наоборот.
-$vegAsset = $rel.assets | Where-Object { $_.name -eq 'vegetation.tar.xz' } | Select-Object -First 1
-$vegStamp = Join-Path $Root 'appdata\da_veg_version.txt'
-$vegFiles = Join-Path $Root 'appdata\da_veg_files.txt'
-$tarExe = Join-Path $env:SystemRoot 'System32	ar.exe'
-
-if ($vegAsset)
-{
-    $vegHave = ''
-    if (Test-Path $vegStamp) { try { $vegHave = ([IO.File]::ReadAllText($vegStamp)).Trim([char]0xFEFF).Trim() } catch { } }
-    $vegWant = "$latest/$($vegAsset.id)"   # тег + номер вложения: сменится и при перезаливке
-
-    if ($vegHave -eq $vegWant)
-    {
-        Say '  Растительность уже свежая.' 'DarkGray'
-    }
-    elseif (-not (Test-Path $tarExe))
-    {
-        # tar появился в Windows 10 сборки 1803. Без него молча пропускаем: это украшение,
-        # а не условие работы игры, и рушить из-за него установку нельзя.
-        Say '  Растительность пропущена: в системе нет tar.exe (нужна Windows 10 1803 и новее).' 'DarkYellow'
-    }
-    else
-    {
-        Say ("  Качаю растительность ({0})..." -f (Size $vegAsset.size))
-        $vegTmp = Join-Path $Work 'vegetation.tar.xz'
-        $vegHeaders = $GhHeaders.Clone()
-        $vegHeaders['Accept'] = 'application/octet-stream'
-        $vegUrl = "https://api.github.com/repos/$Owner/$Repo/releases/assets/$($vegAsset.id)"
-        try
-        {
-            Get-File $vegUrl $vegTmp $vegAsset.size $vegHeaders
-
-            # Перечень читаем ДО распаковки: архив нужен целым, а сразу после мы его удалим.
-            $vegList = @(& $tarExe -tf $vegTmp 2>$null | Where-Object { $_ -and $_ -notmatch '/$' })
-
-            Push-Location $Root
-            try { & $tarExe -xf $vegTmp; if ($LASTEXITCODE -ne 0) { throw "tar вернул $LASTEXITCODE" } }
-            finally { Pop-Location }
-
-            [IO.File]::WriteAllText($vegFiles, (($vegList | ForEach-Object { $_.Replace('/', '') }) -join "`r`n"), $Utf8NoBomVeg)
-            [IO.File]::WriteAllText($vegStamp, $vegWant, $Utf8NoBomVeg)
-            Remove-Item $vegTmp -Force -ErrorAction SilentlyContinue
-            Say ("  Растительность обновлена: {0} файлов." -f $vegList.Count) 'DarkGray'
-        }
-        catch
-        {
-            Say ("  ! растительность не поставилась: {0}" -f $_.Exception.Message) 'DarkYellow'
-            Say '    Это только оформление - игра работает и без неё.' 'DarkYellow'
-        }
-    }
-}
 
 # --- 10. Убираем то, чего в новой сборке больше нет ------------------------------------------
 # Считаем только по манифесту: файл удаляется, если МЫ его ставили и теперь он исчез.
