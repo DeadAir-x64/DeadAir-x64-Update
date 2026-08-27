@@ -417,6 +417,22 @@ Get-ChildItem $dataSrc -Recurse -File | ForEach-Object {
     $newFiles.Add('gamedata\' + $_.FullName.Substring($dataSrc.Length).TrimStart('\'))
 }
 
+# [DA_PORT] Файлы, которые ложатся в САМ КОРЕНЬ игры — папка root в обновлении.
+#
+# Раньше корневых файлов обновление не возило вовсе: только bin и gamedata. А запускалки и
+# установщики дополнений живут именно в корне, рядом с ярлыками, и попадали туда лишь при первой
+# установке. Значит новая запускалка не доезжала ни до кого, кто уже играет.
+#
+# Заносим их в тот же манифест, что и остальное: тогда они и обновляются, и убираются по общим
+# правилам. Чужие файлы в корне — ярлыки, правки игрока, другие моды — остаются нетронутыми:
+# уборка сносит только то, что мы сами когда-то поставили.
+$rootSrc = Join-Path $repoDir.FullName 'root'
+if (Test-Path $rootSrc) {
+    Get-ChildItem $rootSrc -Recurse -File | ForEach-Object {
+        $newFiles.Add($_.FullName.Substring($rootSrc.Length).TrimStart('\'))
+    }
+}
+
 # --- 8а. Какие шейдеры на самом деле меняются -----------------------------------------------
 #
 # Считать ОБЯЗАТЕЛЬНО до копирования: после него новый файл лежит поверх старого, и разницы уже
@@ -457,6 +473,12 @@ New-Item -ItemType Directory -Force $binDst | Out-Null
 Copy-Item "$binSrc\*" $binDst -Recurse -Force
 Copy-Item $dataSrc $Root -Recurse -Force
 Copy-Item (Join-Path $repoDir.FullName 'config\fsgame.ltx') (Join-Path $Root 'fsgame.ltx') -Force
+
+# [DA_PORT] Корневые файлы — запускалки и установщики дополнений. Перечень их уже посчитан
+# в шаге 8, здесь они собственно кладутся.
+if (Test-Path $rootSrc) {
+    Copy-Item (Join-Path $rootSrc '*') $Root -Recurse -Force
+}
 
 # --- 9а. Сносим кэш ровно тех шейдеров, которые изменились ------------------------------------
 #
