@@ -1647,6 +1647,40 @@ end
 ------------------------------------------------------------------------------------------------------
 -- called when an inventory item is eaten/used
 -- returning false will prevent the item from being used
+-- [DA_PORT] Namerenie upotrebit vesch - DO samogo upotrebleniya.
+--
+-- Zachem otdelnaya tochka. CInventory__eat nizhe zovetsya UZHE POSLE togo, kak vesch syedena, i
+-- ego otkaz nichego ne otmenyaet (dvizhok, Inventory.cpp). A modam s animatsiyami edy nuzhno
+-- imenno perehvatit namerenie: proigrat stsenu i upotrebit vesch samim, v nuzhnyy kadr.
+--
+-- VAZHNO: flag peredaetsya TABLITSEY, a ne znacheniem. Logicheskoe znachenie v Lua neizmenyaemo i
+-- uhodit kopiey: podpischik pravit ego u sebya, a vyzyvayuschiy etogo ne vidit. Rovno etim i bolen
+-- CInventory__eat - v kommentarii obeschano "returning false will prevent the item from being
+-- used", a vernut mozhno tolko to, s chem zashli.
+--
+-- NELZYA cherez RegisterScriptCallback: perechen imen sobytiy (axr_main.intercepts) obyavlen
+-- LOKALNO i snaruzhi ne popolnyaetsya, a podpiska na neizvestnoe imya molcha nichego ne delaet.
+da_before_item_use_handlers = {}
+
+function da_register_before_item_use(func)
+	if (type(func) ~= "function") then return end
+	for i = 1, #da_before_item_use_handlers do
+		if (da_before_item_use_handlers[i] == func) then return end
+	end
+	table.insert(da_before_item_use_handlers, func)
+end
+
+function da_before_item_use(npc,item)
+	local flags = { ret_value = true }
+	for i = 1, #da_before_item_use_handlers do
+		local ok, err = pcall(da_before_item_use_handlers[i], npc, item, flags)
+		if (not ok) then
+			printf("![DA_PORT] da_before_item_use: %s", tostring(err))
+		end
+	end
+	return flags.ret_value
+end
+
 function CInventory__eat(npc,item)
 	local return_flag = true
 	SendScriptCallback("on_before_item_use",npc,item,return_flag)

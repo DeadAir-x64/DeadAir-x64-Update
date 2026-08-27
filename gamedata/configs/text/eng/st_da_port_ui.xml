@@ -271,6 +271,18 @@
 	<string id="da_sun_shafts">
 		<text>Sun shafts</text>
 	</string>
+	<string id="da_sun_shafts_mod">
+		<text>Enhanced sun shafts</text>
+	</string>
+	<string id="ui_mm_grp_ui_layout">
+		<text>Wide screen</text>
+	</string>
+	<string id="ui_mm_ui_pillarbox">
+		<text>Centered UI</text>
+	</string>
+	<string id="ui_mm_ui_safe_zone">
+		<text>Edge inset, %</text>
+	</string>
 	<string id="da_shadow_quality">
 		<text>Shadow quality</text>
 	</string>
@@ -410,6 +422,15 @@
 	<string id="ui_mm_season_summer">
 		<text>Summer</text>
 	</string>
+	<string id="ui_mm_anim">
+		<text>Animations (restart required)</text>
+	</string>
+	<string id="ui_mm_anim_on">
+		<text>On</text>
+	</string>
+	<string id="ui_mm_anim_off">
+		<text>Off</text>
+	</string>
 	<string id="ui_mm_snd_device_auto">
 		<text>System default</text>
 	</string>
@@ -541,4 +562,48 @@
 	<string id="ui_da_cross_relation">
 		<text>Target highlight</text>
 	</string>
+	<string id="da_parallax_force">
+		<text>Relief on every surface with a height map</text>
+	</string>
+	<string id="da_hex_tiling">
+		<text>Break texture repetition</text>
+	</string>
+	<string id="ui_da_tune_tonemap_aces">
+		<text>ACES filmic curve</text>
+	</string>
+	<string id="ui_da_tune_tonemap_white">
+		<text>White point</text>
+	</string>
+	<string id="ui_da_tune_add_r">
+		<text>Offset: red</text>
+	</string>
+	<string id="ui_da_tune_add_g">
+		<text>Offset: green</text>
+	</string>
+	<string id="ui_da_tune_add_b">
+		<text>Offset: blue</text>
+	</string>
+	<string id="ui_da_tune_pow_r">
+		<text>Midtones: red</text>
+	</string>
+	<string id="ui_da_tune_pow_g">
+		<text>Midtones: green</text>
+	</string>
+	<string id="ui_da_tune_pow_b">
+		<text>Midtones: blue</text>
+	</string>
+	<string id="ui_da_tune_linear">
+		<text>Linear-space lighting</text>
+	</string>
+	<string id="ui_da_tune_preset">
+		<text>Preset (0 stock, 1 ours)</text>
+	</string>
+
+	<!-- [DA_PORT] item use animation sets: ported / stock / none -->
+
+	<!-- [DA_PORT] "Animations" group on the Gameplay tab -->
+
+
+
+
 </string_table>
