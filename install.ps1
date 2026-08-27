@@ -493,7 +493,17 @@ $cacheRoot = Join-Path $Root 'appdata\shaders_cache_oxr'
 if ($changedShaders.Count -and (Test-Path $cacheRoot)) {
     $dropped = 0
     foreach ($name in ($changedShaders | Sort-Object -Unique)) {
-        Get-ChildItem $cacheRoot -Recurse -Directory -Filter $name -ErrorAction SilentlyContinue |
+        # ⛔ Искать каталог кэша по ТОЧНОМУ имени исходника нельзя, и это стоило целого захода
+        # отладки 27.08. Движок кладёт результат под именем ВАРИАНТА, а не файла: исходник
+        # accum_sun_far.ps компилируется в каталог accum_sun_far_nomsaa.ps, combine_1.ps —
+        # в combine_1_nomsaa.ps. Точный фильтр не находил их вовсе, и у всех, у кого кэш уже
+        # был, изменённые шейдеры продолжали работать СТАРЫМИ двоичными: ни ошибки, ни строки
+        # в логе — ровно та беда, от которой этот блок и написан.
+        #
+        # Поэтому сносим по основе имени: <имя без расширения>*<расширение>.
+        $base = [System.IO.Path]::GetFileNameWithoutExtension($name)
+        $ext  = [System.IO.Path]::GetExtension($name)
+        Get-ChildItem $cacheRoot -Recurse -Directory -Filter ($base + '*' + $ext) -ErrorAction SilentlyContinue |
             ForEach-Object {
                 Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
                 $dropped++
