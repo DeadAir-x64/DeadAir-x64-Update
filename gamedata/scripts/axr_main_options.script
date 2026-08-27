@@ -126,6 +126,19 @@ function opt_menu_on_init(menu)
 	--menu.gameplay_options["excl_dist"]			= {default=75, 		debug_only=true, 	typ="list", list={0,25,50,75,100}}  
 	
 	-- quicksave_cnt
+	-- [DA_PORT] Настройки модуля анимаций приезжают ВМЕСТЕ с ним.
+	--
+	-- Раньше шесть переключателей были описаны прямо здесь, а сами анимации лежат в архиве
+	-- da_animations.xdb0. У того, кто модуль не ставил или выключил, раздел «Анимации» всё равно
+	-- висел в меню и ничего не переключал; хуже — три пункта спрашивали умолчания у da_item_anims,
+	-- скрипта из того же архива, которого без модуля просто нет.
+	--
+	-- Теперь описание уехало в сам архив (da_anim_options.script), а здесь остался вызов через
+	-- проверку существования: есть модуль — раздел появится, нет модуля — его не будет вовсе.
+	if da_anim_options then
+		da_anim_options.register(menu)
+	end
+
 	menu.gameplay_options["quicksave_cnt"]		= {default=5, 		debug_only=false, 	typ="list", list={1,3,5,10}}
 	
 	if (db.actor) then -- Options will only show while in-game
@@ -178,6 +191,32 @@ function opt_menu_on_accept(menu,optMgr,console)
 		end
     end
     axr_main.config:save()
+
+    -- [DA_PORT] Перечитать настройки тем, кто держит их копию в своих переменных.
+    --
+    -- Через событие это сделать НЕЛЬЗЯ, хотя выглядит так, будто можно: enhanced_animations,
+    -- take_item_anim и паркур подписаны на "on_option_change", но axr_main.callback_set молча
+    -- пропускает имена, которых нет в его белом списке intercepts, а этого имени там нет. То есть
+    -- подписки пустые, и рассылка уходит в никуда — проверено зондом: за строкой «рассылаю» в
+    -- логе не появилось ни одного отклика.
+    --
+    -- Расширять intercepts значит форкать axr_main.script целиком из архива ради одной строки,
+    -- поэтому зовём напрямую. Список короткий и весь на виду.
+    if (db and db.actor) then
+        -- [DA_PORT] ВРЕМЕННЫЙ ЗОНД
+        printf("da_anims: применено, перечитываю настройки, режим=%s", tostring(da_item_anims and da_item_anims.mode()))
+        local reload = {
+            { enhanced_animations,       "loadsettings" },
+            { take_item_anim,            "loadsettings" },
+            { demonized_ledge_grabbing,  "load_settings" },
+        }
+        for i = 1, #reload do
+            local mod, fn = reload[i][1], reload[i][2]
+            if (mod and mod[fn]) then
+                mod[fn]()
+            end
+        end
+    end
 end
 
 function opt_menu_on_set_values(menu,optMgr)

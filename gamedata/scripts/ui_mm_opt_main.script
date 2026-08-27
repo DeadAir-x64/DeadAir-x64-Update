@@ -127,7 +127,11 @@ function options_dialog:__init() super()
 		{ "world",      { "ground_items", "release_dropped_items", "da_stack_all" } },
 		{ "combat",     { "crosshair_distance", "show_tracers" } },
 		{ "interface",  { "hud_draw_info", "hud_draw_map", "show_weapon",
-		                  "slot_hud", "mask_hud", "letterbox", "tips" } },
+		                  "slot_hud", "mask_hud", "letterbox", "tips",
+		                  "da_fp_body" } },
+		-- [DA_PORT] Свой раздел: наборы анимаций употребления вещей и паркур.
+		{ "animations", { "da_item_anims", "da_wear_anims", "da_skin_anims",
+		                  "da_body_search_anim", "da_backpack_anim", "da_parkour" } },
 		{ "misc",       { "important_save", "quicksave_cnt", "crouch_toggle",
 		                  "dynamic_news", "radio_mod", "heli_engine_sound",
 		                  "photomode", "localization" } },
@@ -136,6 +140,18 @@ function options_dialog:__init() super()
 
 	local placed = {}
 	for _, g in ipairs(groups) do
+		-- [DA_PORT] Пустой раздел не рисуем вовсе.
+		--
+		-- Настройки некоторых наборов приезжают вместе с ними (модуль анимаций — в архиве
+		-- da_animations.xdb0). Без набора его переключателей не существует, и заголовок повисал
+		-- в меню один, без единой строки под ним: человек видит раздел «Анимации» и не понимает,
+		-- почему он пуст. Считаем содержимое ДО того, как заводить заголовок.
+		local any = false
+		for _, key in ipairs(g[2]) do
+			if by_key[key] then any = true break end
+		end
+		if not any then goto next_group end
+
 		local hdr = self.xml:InitStatic("tab_gameplay:templ_header", nil)
 		self.xml:InitStatic("tab_gameplay:cap_grp_"..g[1], hdr)
 		self.gameplay_scroll_v:AddWindow(hdr, true)
@@ -147,6 +163,7 @@ function options_dialog:__init() super()
 				placed[key] = true
 			end
 		end
+		::next_group::
 	end
 
 	for key, ctl in pairs(by_key) do
@@ -594,13 +611,13 @@ function options_dialog:Update()
 	-- therefore prints a confident "0" next to a knob sitting at the far right - which is exactly how
 	-- anisotropy and the grass radius looked. Integer sliders must be read with GetIValue, and the set
 	-- below has to match the is_integer="1" attributes in the layout.
-	local int_track = { aniso = true, detail_radius = true }
+	local int_track = { aniso = true, detail_radius = true, ui_safe_zone = true }
 	for _, dlg in ipairs({ self.dlg_video, self.dlg_performance, self }) do
 		if dlg then
 			for _, n in ipairs({ "gamma", "contrast", "brightness", "aniso",
 			                     "sun_far", "vis_dist", "detail_radius", "detail_density",
 			                     "geometry_lod", "detail_height",
-			                     "r2_gloss_factor", "light_distance", "particles_distance",
+			                     "r2_gloss_factor", "light_distance", "particles_distance", "ui_safe_zone",
 			                     "bloom" }) do
 				local tr, lb = dlg[n.."_track"], dlg[n.."_val"]
 				if tr and lb then

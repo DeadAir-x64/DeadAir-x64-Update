@@ -437,6 +437,7 @@ r__dlss ui_mm_dlss_ultra_quality
 r__dlss_reactive 1
 r__dtex_range 175.
 r__fog_dist 0.5
+r__fog_follow_vis 1.
 r__fog_height 0.5
 r__fog_height_base -15.
 r__fog_height_falloff 0.02

@@ -85,6 +85,53 @@ function use_item(name)
 
 	if (axr_main.config:r_value("mm_options","enable_extra_animations",1,false) == false) and (DEV_DEBUG_DEV) then return end
 
+	-- [DA_PORT] Штатный набор анимаций уступает перенесённому там, где они пересекаются.
+	--
+	-- Оба набора висят на одном событии употребления, поэтому до переключателя играли вместе:
+	-- руки от enhanced_animations, тряска камеры и убирание оружия отсюда. Разбор — в
+	-- da_item_anims.script.
+	--
+	-- Проверка НЕ сплошная: у штатного набора есть вещи, которых у перенесённого нет вовсе —
+	-- костюмы, шлемы, ремнаборы, чистка оружия. Глушить их в режиме «Новые» значило бы отобрать
+	-- анимации, а не развести наборы. Поэтому глушим ровно те разделы, для которых у
+	-- перенесённого набора есть своя запись.
+	-- [DA_PORT] Разделка живёт под своим пунктом меню, у неё и сцена своя.
+	local da_skin = (name == "mutant_looting") or (name == "mutant_looting_fast")
+	-- [DA_PORT] Надевание брони и шлема живёт под своим пунктом меню.
+	local da_wear = (name == "outfit") or (name == "helm")
+	local da_wear_slot = (name == "helm") and 12 or 7
+	-- [DA_PORT] Модуль анимаций необязателен: da_item_anims лежит в архиве da_animations.xdb0
+	-- и без него не существует. Прежний вызов был без проверки и падал бы на выключенном модуле.
+	-- Нет модуля — режим считаем выключенным, и вся ветка ниже сама уходит на старый путь.
+	local da_mode = da_item_anims
+	             and (da_skin and da_item_anims.skin_mode()
+	              or da_wear and da_item_anims.wear_mode()
+	              or da_item_anims.mode())
+	             or "old"
+	-- [DA_PORT] ВРЕМЕННЫЙ ЗОНД
+	printf("da_anims: штатный набор %s: режим=%s перекрыт=%s есть запись=%s",
+		tostring(name), tostring(da_mode),
+		tostring(enhanced_animations and enhanced_animations.da_has_anim(name)),
+		tostring(item_fx[name] ~= nil))
+	if (da_mode == "off") then return end
+	-- Надевание перекрыто нашим набором целиком, поэтому проверять покрытие FDDA для него нечего.
+	-- Глушим штатное надевание только там, где наш набор вещь ДЕЙСТВИТЕЛЬНО покрывает.
+	--
+	-- Спрашиваем про вещь, которая СЕЙЧАС в слоте, а не про запомненный признак. Признак был
+	-- переменной и переживал переключение режима: надел вещь без своей записи, переключился на
+	-- «Новые» — а он всё ещё говорил «отдай штатному», и старая анимация играла поверх новой.
+	if da_wear then
+		local w = db.actor and db.actor:item_in_slot(da_wear_slot)
+		printf("da_wear: ШТАТНЫЙ %s, режим=%s, в слоте %s=%s, покрыта=%s", tostring(name),
+			tostring(da_mode), tostring(da_wear_slot), tostring(w and w:section()),
+			tostring(w and da_wear_anims and da_wear_anims.covers(w, da_wear_slot)))
+	end
+	if da_wear and (da_mode ~= "old") then
+		local worn = db.actor and db.actor:item_in_slot(da_wear_slot)
+		if (not worn) or (da_wear_anims and da_wear_anims.covers(worn, da_wear_slot)) then return end
+	end
+	if (da_mode ~= "old") and enhanced_animations and enhanced_animations.da_has_anim(name) then return end
+
 	--printf("-- use item")
 	if item_fx[name] and (time_global() > time_disabled) then
 		--printf("itemfx = true")
