@@ -208,17 +208,72 @@ if (-not $latest) { Fail 'В репозитории пока нет ни одн�
 #
 # Берём файлы напрямую из репозитория, а не из архива с игровыми файлами: архив весит десятки
 # мегабайт и качается только когда есть что ставить, а тут нужно 35 КБ и каждый запуск.
+# Короткий файл с ЖЁСТКИМ ограничением по времени.
+#
+# ⛔ Здесь стоял Net.WebClient.DownloadData, у которого таймаут задать нечем. Это был
+# единственный сетевой вызов во всём установщике без ограничения по времени — и он же
+# единственный, кто ходил на raw.githubusercontent.com. Когда провайдер режет этот адрес
+# по DPI, соединение не отвергается, а виснет: у человека установщик замирал сразу после
+# «Смотрю, что доступно...» и не отмирал никогда.
+#
+# ⚠️ Accept и User-Agent — ограниченные заголовки: через .Headers они БРОСАЮТ исключение,
+# и ошибка кода прикидывается обрывом связи. Ставятся только свойствами.
+function Get-Small($url, $headers, $accept, $timeoutMs) {
+    $req = [Net.HttpWebRequest]::Create($url)
+    $req.UserAgent = 'DeadAir-x64-Updater'
+    if ($accept) { $req.Accept = $accept }
+    $req.Timeout = $timeoutMs
+    $req.ReadWriteTimeout = $timeoutMs
+    if ($headers) {
+        foreach ($k in $headers.Keys) {
+            if ($k -ne 'User-Agent' -and $k -ne 'Accept') { $req.Headers[$k] = $headers[$k] }
+        }
+    }
+    $resp = $req.GetResponse()
+    try {
+        $ms = New-Object IO.MemoryStream
+        $st = $resp.GetResponseStream()
+        $buf = New-Object byte[] 16384
+        while (($n = $st.Read($buf, 0, $buf.Length)) -gt 0) { $ms.Write($buf, 0, $n) }
+        $ms.ToArray()
+    } finally { $resp.Close() }
+}
+
 function Update-Self {
     $names = @('install.ps1', 'Обновление.cmd', 'Установить Dead Air x64.cmd')
     $done = 0
+    $failed = 0
     foreach ($name in $names) {
-        $url = "https://raw.githubusercontent.com/$Owner/$Repo/$Branch/" + [Uri]::EscapeDataString($name)
-        try {
-            $wc = New-Object Net.WebClient
-            $wc.Headers['User-Agent'] = 'DeadAir-x64-Updater'
-            $fresh = $wc.DownloadData($url)
-        } catch { continue }   # нет связи или файла — не повод срывать установку
-        if (-not $fresh -or $fresh.Length -lt 100) { continue }
+        $enc = [Uri]::EscapeDataString($name)
+        # Порядок именно такой, и он проверен побайтово.
+        #
+        # ⛔ api.github.com отдаёт содержимое ПЕРЕКОДИРОВАННЫМ: читает файл как текст и выдаёт
+        # UTF-8. Оба .cmd лежат в CP866 — иначе cmd.exe покажет кракозябры вместо русского —
+        # и через API приезжают раздутыми и испорченными: 338 байт превращаются в 505.
+        # Записать такое человеку значит сломать ему ярлыки, да ещё при КАЖДОМ запуске:
+        # отличие от настоящего файла никуда не денется. В форме base64 то же самое —
+        # перекодирование происходит на стороне GitHub, а не при отдаче.
+        #
+        # Поэтому основной путь — raw.githubusercontent, он байт в байт. API оставлен
+        # запасным ТОЛЬКО для install.ps1: он в UTF-8, перекодировать там нечего
+        # (сверено: 42831 байт обоими путями, различий нет).
+        $tries = @( @{ url = "https://raw.githubusercontent.com/$Owner/$Repo/$Branch/$enc"; accept = $null } )
+        if ($name -eq 'install.ps1') {
+            $tries += @{ url = "https://api.github.com/repos/$Owner/$Repo/contents/$($enc)?ref=$Branch"
+                         accept = 'application/vnd.github.raw' }
+        }
+        $fresh = $null
+        foreach ($t in $tries) {
+            try { $fresh = Get-Small $t.url $GhHeaders $t.accept 10000; break } catch { }
+        }
+        if (-not $fresh) {
+            # Если не доехал ПЕРВЫЙ файл, до GitHub сейчас не достучаться вовсе.
+            # Дальше пробовать нечего: это ещё две задержки на ровном месте.
+            $failed++
+            if ($failed -eq 1 -and $name -eq 'install.ps1') { break }
+            continue
+        }
+        if ($fresh.Length -lt 100) { continue }
 
         $dst = Join-Path $Root $name
         $differs = $true
@@ -243,6 +298,7 @@ function Update-Self {
     if ($done -gt 0) { Say '  Обновил сам установщик — со следующего запуска будет новее.' 'DarkGray' }
 }
 
+Say '  Проверяю обновление самого установщика...' 'DarkGray'
 Update-Self
 
 if ($installed -eq $latest) {
